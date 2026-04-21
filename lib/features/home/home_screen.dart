@@ -1,0 +1,578 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:timeago/timeago.dart' as timeago;
+import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_text_styles.dart';
+import '../../core/constants/app_routes.dart';
+import '../../shared/widgets/shared_widgets.dart';
+import '../../shared/providers/post_provider.dart';
+import '../../shared/providers/auth_provider.dart';
+import '../../shared/providers/user_provider.dart';
+import '../../shared/providers/promotion_provider.dart';
+import '../../shared/models/models.dart';
+import '../../shared/mock/story_state.dart';
+import 'post_details_screen.dart';
+import 'story_viewer_screen.dart';
+import 'main_shell.dart' show AppDrawer;
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<PostProvider>().listenFeed();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      drawer: const AppDrawer(),
+      appBar: const AppTopBar(
+        showMenuIcon: true,
+        actions: [TopBarActions()],
+      ),
+      body: Column(children: [
+        // Quick-access shortcut chips (navigate to sections, not filter)
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              _FilterChip(
+                label: 'Feed',
+                active: true,
+                onTap: () => context.read<PostProvider>().listenFeed(),
+              ),
+              _FilterChip(label: 'Deals', active: false, onTap: () => context.push(AppRoutes.offers)),
+              _FilterChip(label: 'Groups', active: false, onTap: () => context.push('/groups-list')),
+              _FilterChip(label: 'Events', active: false, onTap: () => context.push('/events')),
+              _FilterChip(label: 'Matches', active: false, onTap: () => context.push('/match')),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Consumer<PostProvider>(
+            builder: (context, provider, _) {
+              final posts = provider.feed;
+              if (posts.isEmpty) {
+                return const _EmptyFeed();
+              }
+              return RefreshIndicator(
+                color: AppColors.primary,
+                onRefresh: () async => provider.listenFeed(),
+                child: ListView.separated(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  itemCount: posts.length + 2,  // +1 stories, +1 promos strip
+                  separatorBuilder: (_, i) => i == 0 || i == 1
+                      ? const Divider(color: AppColors.backgroundGrey, thickness: 6, height: 6)
+                      : const SizedBox(height: 8),
+                  itemBuilder: (context, i) {
+                    if (i == 0) return _StoriesRow();
+                    if (i == 1) return const _PromoStrip();
+                    return _PostCard(post: posts[i - 2], index: i - 2);
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _FilterChip({required this.label, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(right: 8, top: 6, bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: active ? AppColors.dark : AppColors.backgroundGrey,
+          borderRadius: BorderRadius.circular(100),
+        ),
+        child: Center(
+          child: Text(label, style: TextStyle(
+            color: active ? Colors.white : AppColors.textSecondary,
+            fontSize: 13, fontWeight: FontWeight.w600)),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyFeed extends StatelessWidget {
+  const _EmptyFeed();
+  @override
+  Widget build(BuildContext context) => const EmptyState(
+    icon: Icons.article_outlined,
+    title: 'No posts yet',
+    subtitle: 'Be the first to share something with your crew!',
+  );
+}
+
+// ── Stories Row ──────────────────────────────────────────────
+class _StoriesRow extends StatefulWidget {
+  @override
+  State<_StoriesRow> createState() => _StoriesRowState();
+}
+
+class _StoriesRowState extends State<_StoriesRow> {
+  Uint8List? _myStoryBytes;
+
+  Future<void> _pickMyStory() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      final bytes = await picked.readAsBytes();
+      StoryState.instance.myStoryBytes = bytes;
+      setState(() => _myStoryBytes = bytes);
+    }
+  }
+
+  void _viewMyStory() {
+    if (_myStoryBytes == null) return;
+    final currentUser = context.read<AuthProvider>().currentUser;
+    if (currentUser == null) return;
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => StoryViewerScreen(
+        user: currentUser,
+        imageBytes: _myStoryBytes,
+        isOwn: true,
+      ),
+    )).then((_) => setState(() => _myStoryBytes = StoryState.instance.myStoryBytes));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Only "Your Story" is shown until a backend-backed stories feature ships.
+    // We intentionally no longer render fake stories for other users.
+    final hasStory = _myStoryBytes != null;
+    return SizedBox(
+      height: 104,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: GestureDetector(
+              onTap: hasStory ? _viewMyStory : _pickMyStory,
+              child: Column(children: [
+                Stack(children: [
+                  Container(
+                    width: 56, height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: hasStory ? Border.all(color: AppColors.primary, width: 2.5) : null,
+                      color: AppColors.backgroundGrey,
+                    ),
+                    child: ClipOval(
+                      child: hasStory
+                          ? Image.memory(_myStoryBytes!, fit: BoxFit.cover)
+                          : const Icon(Icons.person, color: AppColors.textSecondary, size: 28),
+                    ),
+                  ),
+                  if (!hasStory)
+                    Positioned(bottom: 0, right: 0,
+                      child: Container(width: 20, height: 20,
+                        decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5)),
+                        child: const Icon(Icons.add, size: 12, color: AppColors.dark))),
+                ]),
+                const SizedBox(height: 4),
+                const Text('Your Story', style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ]),
+            ),
+          ),
+          // Link to nearby users as a lightweight "discover" shortcut
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: GestureDetector(
+              onTap: () => context.push(AppRoutes.nearby),
+              child: Column(children: [
+                Container(
+                  width: 56, height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.primary, width: 2.5),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.all(2),
+                    child: CircleAvatar(
+                      backgroundColor: AppColors.dark,
+                      child: Icon(Icons.people_alt_outlined,
+                          color: AppColors.primary, size: 22),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text('Nearby',
+                    style: AppTextStyles.caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Promo Strip (horizontal scroller of active deals) ───────
+class _PromoStrip extends StatelessWidget {
+  const _PromoStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<PromotionProvider>(
+      builder: (context, provider, _) {
+        final promos = provider.activePromotions.take(8).toList();
+        if (promos.isEmpty) return const SizedBox.shrink();
+
+        return Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Row(children: [
+                  const Icon(Icons.local_offer_rounded, size: 18, color: AppColors.dark),
+                  const SizedBox(width: 6),
+                  const Text('Crew Deals',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => context.push(AppRoutes.offers),
+                    child: const Text('See all',
+                        style: TextStyle(
+                            color: AppColors.dark,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13)),
+                  ),
+                ]),
+              ),
+              SizedBox(
+                height: 168,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: promos.length,
+                  itemBuilder: (_, i) => _PromoMiniCard(promo: promos[i]),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PromoMiniCard extends StatelessWidget {
+  final PromotionModel promo;
+  const _PromoMiniCard({required this.promo});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.push('/promotions/${promo.id}'),
+      child: Container(
+        width: 220,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundGrey,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Stack(children: [
+            promo.imageUrl != null
+                ? Image.network(
+                    promo.imageUrl!,
+                    height: 90,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _placeholder(),
+                  )
+                : _placeholder(),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text('-${promo.discountPercent}%',
+                    style: const TextStyle(
+                        color: AppColors.dark,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11)),
+              ),
+            ),
+          ]),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(promo.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 2),
+              Text(promo.businessName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.textSecondary)),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      height: 90,
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1A1D27), Color(0xFF2D3142)],
+        ),
+      ),
+      child: const Center(
+        child: Icon(Icons.local_offer, size: 28, color: AppColors.primary),
+      ),
+    );
+  }
+}
+
+// ── Post Card ────────────────────────────────────────────────
+class _PostCard extends StatefulWidget {
+  final PostModel post;
+  final int index;
+  const _PostCard({required this.post, required this.index});
+  @override
+  State<_PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends State<_PostCard> {
+  bool _liked = false;
+  bool _saved = false;
+  late int _likeCount;
+
+  @override
+  void initState() {
+    super.initState();
+    _likeCount = widget.post.likeCount;
+    _checkLiked();
+    _checkSaved();
+  }
+
+  Future<void> _checkLiked() async {
+    final liked = await context.read<PostProvider>().isLiked(widget.post.id);
+    if (mounted) setState(() => _liked = liked);
+  }
+
+  Future<void> _checkSaved() async {
+    final saved = await context.read<PostProvider>().isSaved(widget.post.id);
+    if (mounted) setState(() => _saved = saved);
+  }
+
+  Future<void> _toggleSave() async {
+    final provider = context.read<PostProvider>();
+    setState(() => _saved = !_saved);
+    if (_saved) {
+      await provider.savePost(widget.post.id);
+    } else {
+      await provider.unsavePost(widget.post.id);
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    final provider = context.read<PostProvider>();
+    setState(() { _liked = !_liked; _likeCount += _liked ? 1 : -1; });
+    if (_liked) {
+      await provider.likePost(widget.post.id);
+    } else {
+      await provider.unlikePost(widget.post.id);
+    }
+  }
+
+  void _openPost() {
+    Navigator.push(context,
+      MaterialPageRoute(builder: (_) => PostDetailsScreen(post: widget.post)));
+  }
+
+  void _copyPostLink() {
+    final link = 'https://flyconnect.app/posts/${widget.post.id}';
+    Clipboard.setData(ClipboardData(text: link));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Post link copied to clipboard'),
+      duration: Duration(seconds: 2),
+    ));
+  }
+
+  void _showOptions() {
+    showModalBottomSheet(context: context, shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(
+          leading: const Icon(Icons.share_outlined),
+          title: const Text('Share post'),
+          onTap: () { Navigator.pop(context); _copyPostLink(); }),
+        ListTile(
+          leading: const Icon(Icons.link),
+          title: const Text('Copy link'),
+          onTap: () { Navigator.pop(context); _copyPostLink(); }),
+        ListTile(leading: const Icon(Icons.flag_outlined, color: Colors.red),
+          title: const Text('Report post', style: TextStyle(color: Colors.red)),
+          onTap: () {
+            Navigator.pop(context);
+            context.read<PostProvider>().reportPost(widget.post.id);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Post reported'), backgroundColor: Colors.red));
+          }),
+      ])));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.post;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // Header
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(children: [
+          GestureDetector(
+            onTap: () => context.push('/users/${p.authorId}'),
+            child: CircleAvatar(radius: 20,
+              backgroundColor: AppColors.backgroundGrey,
+              backgroundImage: p.authorPhotoUrl != null ? NetworkImage(p.authorPhotoUrl!) : null,
+              child: p.authorPhotoUrl == null ? Text(p.authorName.isNotEmpty ? p.authorName[0] : '?', style: const TextStyle(color: AppColors.dark)) : null),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            GestureDetector(onTap: () => context.push('/users/${p.authorId}'),
+              child: Text(p.authorName, style: AppTextStyles.labelMedium)),
+            Text(timeago.format(p.createdAt), style: AppTextStyles.caption),
+          ])),
+          IconButton(icon: const Icon(Icons.more_horiz, color: AppColors.textSecondary), onPressed: _showOptions),
+        ])),
+      // Image / gradient fallback
+      GestureDetector(
+        onDoubleTap: _toggleLike,
+        onTap: _openPost,
+        child: p.mediaUrls.isNotEmpty
+            ? ClipRRect(
+                borderRadius: BorderRadius.zero,
+                child: Image.network(
+                  p.mediaUrls.first,
+                  height: 280,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (_, child, progress) => progress == null ? child
+                      : Container(height: 280, color: AppColors.backgroundGrey,
+                          child: const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))),
+                  errorBuilder: (_, __, ___) => Container(height: 280, color: AppColors.backgroundGrey,
+                      child: const Icon(Icons.image_not_supported_outlined, color: AppColors.textSecondary)),
+                ))
+            : Container(
+                height: 180,
+                color: Colors.primaries[widget.index % Colors.primaries.length].withValues(alpha: 0.15),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(p.authorName, style: AppTextStyles.labelMedium),
+                    const SizedBox(height: 8),
+                    Text(
+                      p.caption.length > 100 ? p.caption.substring(0, 100) : p.caption,
+                      style: AppTextStyles.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+      ),
+      // Actions
+      Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 0), child: Row(children: [
+        GestureDetector(onTap: _toggleLike, child: Row(children: [
+          AnimatedSwitcher(duration: const Duration(milliseconds: 200),
+            child: Icon(_liked ? Icons.favorite : Icons.favorite_border,
+              key: ValueKey(_liked), size: 24,
+              color: _liked ? Colors.red : AppColors.textPrimary)),
+          const SizedBox(width: 4),
+          Text('$_likeCount', style: AppTextStyles.bodySmall),
+        ])),
+        const SizedBox(width: 16),
+        GestureDetector(onTap: _openPost, child: Row(children: [
+          const Icon(Icons.chat_bubble_outline, size: 22, color: AppColors.textPrimary),
+          const SizedBox(width: 4),
+          Text('${p.commentCount}', style: AppTextStyles.bodySmall),
+        ])),
+        const Spacer(),
+        IconButton(
+          icon: const Icon(Icons.share_outlined, size: 22, color: AppColors.textPrimary),
+          onPressed: _copyPostLink,
+        ),
+        IconButton(
+          icon: Icon(
+            _saved ? Icons.bookmark : Icons.bookmark_border,
+            size: 22,
+            color: _saved ? AppColors.primary : AppColors.textPrimary,
+          ),
+          onPressed: _toggleSave,
+        ),
+      ])),
+      // Caption
+      if (p.caption.isNotEmpty)
+        Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: RichText(text: TextSpan(style: AppTextStyles.bodyMedium, children: [
+            TextSpan(text: '${p.authorName} ', style: AppTextStyles.labelMedium),
+            TextSpan(text: p.caption.length > 120 ? '${p.caption.substring(0, 120)}... ' : p.caption),
+            if (p.caption.length > 120) TextSpan(text: 'more',
+              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
+          ]))),
+      if (p.commentCount > 0)
+        Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: GestureDetector(onTap: _openPost,
+            child: Text('View all ${p.commentCount} comments',
+              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)))),
+    ]);
+  }
+}
