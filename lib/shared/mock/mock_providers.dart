@@ -18,9 +18,15 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> login(String email, String password) async {
     _loading = true; notifyListeners();
     await Future.delayed(const Duration(milliseconds: 800));
-    if (email.trim() == 'business@flyconnect.com' && password == 'business123') {
+    final e = email.trim().toLowerCase();
+    if (e == 'business@flyconnect.com' && password == 'business123') {
       _currentUser = mockBusinessUser;
+    } else if (e == 'emirates@flyconnect.com' && password == 'emirates123') {
+      _currentUser = mockBusinessUser2;
+    } else if (e == 'sarah@flyconnect.com' && password == 'sarah123') {
+      _currentUser = mockCurrentUser2;
     } else {
+      // Default: any other email/password logs in as user account 1
       _currentUser = mockCurrentUser;
     }
     _loading = false; notifyListeners();

@@ -1,7 +1,10 @@
 import '../models/models.dart';
 
+// ─── Mock Business Users ──────────────────────────────────────
+
+// Account 1: business@flyconnect.com / business123
 final mockBusinessUser = UserModel(
-  uid: 'biz_001', name: 'Sky Lounge NYC', email: 'info@skyloungelnyc.com',
+  uid: 'biz_001', name: 'Sky Lounge NYC', email: 'business@flyconnect.com',
   role: 'business', position: 'Airport Lounge', airport: 'JFK', city: 'New York', state: 'NY',
   bio: 'Premium airport lounge at JFK Terminal 4. Relax, dine and unwind before your flight.',
   photoUrl: 'https://picsum.photos/seed/lounge/200',
@@ -10,7 +13,20 @@ final mockBusinessUser = UserModel(
   isVerified: true, createdAt: DateTime.now().subtract(const Duration(days: 180)),
 );
 
-// ─── Mock Users ───────────────────────────────────────────────
+// Account 2: emirates@flyconnect.com / emirates123
+final mockBusinessUser2 = UserModel(
+  uid: 'biz_002', name: 'Emirates Business Lounge', email: 'emirates@flyconnect.com',
+  role: 'business', position: 'Airlines', airport: 'DXB', city: 'Dubai', state: 'Dubai',
+  bio: 'Official Emirates lounge at Dubai International. First class comfort for all travellers.',
+  photoUrl: 'https://picsum.photos/seed/emirates/200',
+  followerCount: 5120, followingCount: 0, postCount: 28,
+  passportStamps: [], travelHistory: [], hobbies: [],
+  isVerified: true, createdAt: DateTime.now().subtract(const Duration(days: 300)),
+);
+
+// ─── Mock User Accounts ───────────────────────────────────────
+
+// Account 1: user@flyconnect.com / user123
 final mockCurrentUser = UserModel(
   uid: 'user_001',
   name: 'Alex Johnson',
@@ -33,6 +49,31 @@ final mockCurrentUser = UserModel(
   createdAt: DateTime.now().subtract(const Duration(days: 365)),
   lastSeen: DateTime.now(),
   photoUrl: 'https://i.pravatar.cc/200?img=11',
+);
+
+// Account 2: sarah@flyconnect.com / sarah123
+final mockCurrentUser2 = UserModel(
+  uid: 'user_007',
+  name: 'Sarah Mitchell',
+  email: 'sarah@flyconnect.com',
+  airline: 'British Airways',
+  position: 'Flight Attendant',
+  airport: 'LHR',
+  city: 'London',
+  state: 'England',
+  bio: 'Cabin crew with a passion for discovering hidden gems around the world 🌍',
+  hobbies: ['Travel', 'Photography', 'Yoga', 'Reading'],
+  matchType: 'buddy',
+  followerCount: 843,
+  followingCount: 210,
+  postCount: 31,
+  passportStamps: ['GB', 'US', 'FR', 'IT', 'JP', 'AU', 'AE', 'TH'],
+  travelHistory: ['New York', 'Paris', 'Tokyo', 'Sydney'],
+  isVerified: true,
+  role: 'user',
+  createdAt: DateTime.now().subtract(const Duration(days: 220)),
+  lastSeen: DateTime.now(),
+  photoUrl: 'https://i.pravatar.cc/200?img=25',
 );
 
 final mockUsers = [
