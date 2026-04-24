@@ -11,6 +11,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:crypto/crypto.dart';
 import '../models/models.dart';
+import '../mock/mock_data.dart';
 
 // ─── Mock credentials (used when isMock = true) ───────────────
 const _mockCredentials = {
@@ -480,11 +481,17 @@ class AuthProvider extends ChangeNotifier {
 
 // ─── Real User Provider ──────────────────────────────────────
 class UserProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   UserModel? _currentUser;
+  final Set<String> _following = {};
 
   UserModel? get currentUser => _currentUser;
   bool get loading => false;
+
+  UserProvider({this.isMock = false}) {
+    if (isMock) _following.addAll({'user_002', 'user_006'});
+  }
 
   void updateAuth(AuthProvider auth) {
     _currentUser = auth.currentUser;
@@ -492,12 +499,20 @@ class UserProvider extends ChangeNotifier {
   }
 
   Future<UserModel?> fetchUser(String uid) async {
+    if (isMock) {
+      if (uid == 'mock_alex' || uid == 'user_001') return mockCurrentUser;
+      if (uid == 'mock_biz1' || uid == 'biz_001') return mockBusinessUser;
+      if (uid == 'mock_biz2' || uid == 'biz_002') return mockBusinessUser2;
+      if (uid == 'mock_sarah' || uid == 'user_007') return mockCurrentUser2;
+      return mockUsers.where((u) => u.uid == uid).firstOrNull;
+    }
     final doc = await _db.collection('users').doc(uid).get();
     if (!doc.exists) return null;
     return UserModel.fromFirestore(doc);
   }
 
   Future<void> updateProfile(String uid, Map<String, dynamic> data) async {
+    if (isMock) { await Future.delayed(const Duration(milliseconds: 300)); notifyListeners(); return; }
     await _db.collection('users').doc(uid).update(data);
     if (_currentUser != null && uid == _currentUser!.uid) {
       final doc = await _db.collection('users').doc(uid).get();
@@ -507,6 +522,7 @@ class UserProvider extends ChangeNotifier {
   }
 
   Future<void> followUser(String targetUid) async {
+    if (isMock) { _following.add(targetUid); notifyListeners(); return; }
     final uid = _currentUser?.uid;
     if (uid == null) return;
     final batch = _db.batch();
@@ -521,6 +537,7 @@ class UserProvider extends ChangeNotifier {
   }
 
   Future<void> unfollowUser(String targetUid) async {
+    if (isMock) { _following.remove(targetUid); notifyListeners(); return; }
     final uid = _currentUser?.uid;
     if (uid == null) return;
     final batch = _db.batch();
@@ -533,6 +550,7 @@ class UserProvider extends ChangeNotifier {
   }
 
   Future<bool> isFollowing(String targetUid) async {
+    if (isMock) return _following.contains(targetUid);
     final uid = _currentUser?.uid;
     if (uid == null) return false;
     final doc = await _db.collection('users').doc(uid).collection('following').doc(targetUid).get();
@@ -542,21 +560,35 @@ class UserProvider extends ChangeNotifier {
 
 // ─── Real Post Provider ──────────────────────────────────────
 class PostProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   List<PostModel> _feed = [];
   final Set<String> _liked = {};
-  final bool _loading = false;
+  final Set<String> _saved = {};
+  bool _loading = false;
+  AuthProvider? _storedAuth;
 
   bool get loading => _loading;
   List<PostModel> get feed => _feed;
 
-  String? get _uid => _auth.currentUser?.uid;
+  String? get _uid => isMock ? (_storedAuth?.currentUser?.uid ?? 'user_001') : _auth.currentUser?.uid;
   StreamSubscription? _feedSub;
 
-  void updateAuth(AuthProvider auth) {}
+  PostProvider({this.isMock = false}) {
+    if (isMock) {
+      _feed = List.from(mockPosts);
+      _liked.add('post_003');
+    }
+  }
+
+  void updateAuth(AuthProvider auth) {
+    _storedAuth = auth;
+    if (isMock) return;
+  }
 
   void listenFeed() {
+    if (isMock) { _feed = List.from(mockPosts); notifyListeners(); return; }
     _feedSub?.cancel();
     _feedSub = _db.collection('posts')
         .orderBy('createdAt', descending: true)
@@ -569,71 +601,88 @@ class PostProvider extends ChangeNotifier {
   }
 
   Future<void> likePost(String postId) async {
-    if (_uid == null) return;
     _liked.add(postId);
+    if (isMock) {
+      final i = _feed.indexWhere((p) => p.id == postId);
+      if (i != -1) {
+        final p = _feed[i];
+        _feed[i] = PostModel(id: p.id, authorId: p.authorId, authorName: p.authorName,
+          authorPhotoUrl: p.authorPhotoUrl, caption: p.caption, mediaUrls: p.mediaUrls,
+          mediaType: p.mediaType, location: p.location, likeCount: p.likeCount + 1,
+          commentCount: p.commentCount, createdAt: p.createdAt);
+      }
+      notifyListeners(); return;
+    }
+    if (_uid == null) return;
     await _db.collection('posts').doc(postId).collection('likes').doc(_uid).set({'likedAt': Timestamp.now()});
     await _db.collection('posts').doc(postId).update({'likeCount': FieldValue.increment(1)});
     notifyListeners();
   }
 
   Future<void> unlikePost(String postId) async {
-    if (_uid == null) return;
     _liked.remove(postId);
+    if (isMock) {
+      final i = _feed.indexWhere((p) => p.id == postId);
+      if (i != -1) {
+        final p = _feed[i];
+        _feed[i] = PostModel(id: p.id, authorId: p.authorId, authorName: p.authorName,
+          authorPhotoUrl: p.authorPhotoUrl, caption: p.caption, mediaUrls: p.mediaUrls,
+          mediaType: p.mediaType, location: p.location, likeCount: (p.likeCount - 1).clamp(0, 9999),
+          commentCount: p.commentCount, createdAt: p.createdAt);
+      }
+      notifyListeners(); return;
+    }
+    if (_uid == null) return;
     await _db.collection('posts').doc(postId).collection('likes').doc(_uid).delete();
     await _db.collection('posts').doc(postId).update({'likeCount': FieldValue.increment(-1)});
     notifyListeners();
   }
 
   Future<bool> isLiked(String postId) async {
-    if (_uid == null) return false;
     if (_liked.contains(postId)) return true;
+    if (isMock) return false;
+    if (_uid == null) return false;
     final doc = await _db.collection('posts').doc(postId).collection('likes').doc(_uid).get();
     if (doc.exists) _liked.add(postId);
     return doc.exists;
   }
 
   // ── Saved / Bookmarked posts ────────────────────────────────
-  // Stored under users/{uid}/savedPosts/{postId}
-  final Set<String> _saved = {};
 
   Future<void> savePost(String postId) async {
-    if (_uid == null) return;
     _saved.add(postId);
-    await _db
-        .collection('users')
-        .doc(_uid)
-        .collection('savedPosts')
-        .doc(postId)
-        .set({'savedAt': Timestamp.now()});
+    if (isMock) { notifyListeners(); return; }
+    if (_uid == null) return;
+    await _db.collection('users').doc(_uid).collection('savedPosts').doc(postId).set({'savedAt': Timestamp.now()});
     notifyListeners();
   }
 
   Future<void> unsavePost(String postId) async {
-    if (_uid == null) return;
     _saved.remove(postId);
-    await _db
-        .collection('users')
-        .doc(_uid)
-        .collection('savedPosts')
-        .doc(postId)
-        .delete();
+    if (isMock) { notifyListeners(); return; }
+    if (_uid == null) return;
+    await _db.collection('users').doc(_uid).collection('savedPosts').doc(postId).delete();
     notifyListeners();
   }
 
   Future<bool> isSaved(String postId) async {
-    if (_uid == null) return false;
     if (_saved.contains(postId)) return true;
-    final doc = await _db
-        .collection('users')
-        .doc(_uid)
-        .collection('savedPosts')
-        .doc(postId)
-        .get();
+    if (isMock) return false;
+    if (_uid == null) return false;
+    final doc = await _db.collection('users').doc(_uid).collection('savedPosts').doc(postId).get();
     if (doc.exists) _saved.add(postId);
     return doc.exists;
   }
 
   Stream<List<CommentModel>> watchComments(String postId) {
+    if (isMock) return Stream.value([
+      CommentModel(id: 'c1', postId: postId, authorId: 'user_002',
+        authorName: 'Maria Chen', text: 'This is amazing! 🔥',
+        createdAt: DateTime.now().subtract(const Duration(minutes: 30))),
+      CommentModel(id: 'c2', postId: postId, authorId: 'user_003',
+        authorName: 'James Wright', text: 'So inspiring! Congrats 🎉',
+        createdAt: DateTime.now().subtract(const Duration(minutes: 15))),
+    ]);
     return _db.collection('posts').doc(postId).collection('comments')
         .orderBy('createdAt')
         .snapshots()
@@ -641,6 +690,7 @@ class PostProvider extends ChangeNotifier {
   }
 
   Future<void> addComment(String postId, String text) async {
+    if (isMock) return;
     if (_uid == null) return;
     final user = _auth.currentUser!;
     final ref = _db.collection('posts').doc(postId).collection('comments').doc();
@@ -652,6 +702,7 @@ class PostProvider extends ChangeNotifier {
   }
 
   Future<void> reportPost(String postId, {String? reason}) async {
+    if (isMock) return;
     // 1. Flag the post itself so it surfaces in the moderation queue
     await _db.collection('posts').doc(postId).update({
       'reportCount': FieldValue.increment(1), 'isReported': true,
@@ -673,6 +724,7 @@ class PostProvider extends ChangeNotifier {
     required String targetId,
     String? reason,
   }) async {
+    if (isMock) return;
     await _db.collection('reports').add({
       'targetType': targetType,
       'targetId': targetId,
@@ -683,8 +735,9 @@ class PostProvider extends ChangeNotifier {
     });
   }
 
-  // ── Block a user (UGC compliance \u2014 Apple requires this) ────────
+  // ── Block a user (UGC compliance — Apple requires this) ────────
   Future<void> blockUser(String targetUid) async {
+    if (isMock) return;
     if (_uid == null) return;
     await _db
         .collection('users')
@@ -696,6 +749,7 @@ class PostProvider extends ChangeNotifier {
   }
 
   Future<void> unblockUser(String targetUid) async {
+    if (isMock) return;
     if (_uid == null) return;
     await _db
         .collection('users')
@@ -709,6 +763,7 @@ class PostProvider extends ChangeNotifier {
   // Upload image bytes to Firebase Storage and return the public download URL.
   // Path: user_uploads/{uid}/posts/{timestamp}.jpg
   Future<String?> uploadPostImage(Uint8List bytes) async {
+    if (isMock) return null;
     if (_uid == null) return null;
     try {
       final ts = DateTime.now().millisecondsSinceEpoch;
@@ -730,6 +785,17 @@ class PostProvider extends ChangeNotifier {
     String? groupId,
     String audience = 'Everyone',  // Everyone | Connections | Only me
   }) async {
+    if (isMock) {
+      final user = _storedAuth?.currentUser;
+      final post = PostModel(
+        id: 'post_new_${DateTime.now().millisecondsSinceEpoch}',
+        authorId: user?.uid ?? 'user_001', authorName: user?.name ?? 'Alex Johnson',
+        authorPhotoUrl: user?.photoUrl,
+        caption: caption, mediaUrls: mediaUrls, mediaType: mediaType,
+        location: location, likeCount: 0, commentCount: 0, createdAt: DateTime.now());
+      _feed.insert(0, post);
+      notifyListeners(); return;
+    }
     if (_uid == null) return;
     final user = _auth.currentUser!;
     final ref = _db.collection('posts').doc();
@@ -751,15 +817,23 @@ class PostProvider extends ChangeNotifier {
 
 // ─── Real Chat Provider ──────────────────────────────────────
 class ChatProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   List<ChatModel> _chats = [];
   StreamSubscription? _chatsSub;
+  AuthProvider? _storedAuth;
 
   List<ChatModel> get chats => _chats;
-  String? get _uid => _auth.currentUser?.uid;
+  String? get _uid => isMock ? (_storedAuth?.currentUser?.uid ?? 'user_001') : _auth.currentUser?.uid;
+
+  ChatProvider({this.isMock = false}) {
+    if (isMock) _chats = List.from(mockChats);
+  }
 
   void updateAuth(AuthProvider auth) {
+    _storedAuth = auth;
+    if (isMock) return;
     _chatsSub?.cancel();
     if (_uid != null) {
       _chatsSub = _db.collection('chats')
@@ -773,13 +847,32 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  Stream<List<MessageModel>> watchMessages(String chatId) =>
-    _db.collection('chats').doc(chatId).collection('messages')
+  Stream<List<MessageModel>> watchMessages(String chatId) {
+    if (isMock) return Stream.value(mockMessages[chatId] ?? []);
+    return _db.collection('chats').doc(chatId).collection('messages')
         .orderBy('createdAt').snapshots()
         .map((s) => s.docs.map((d) => MessageModel.fromFirestore(d)).toList());
+  }
 
   Future<void> sendMessage(String chatId, String text,
       {String? mediaUrl, String mediaType = 'text'}) async {
+    if (isMock) {
+      final user = _storedAuth?.currentUser;
+      final msg = MessageModel(
+        id: 'msg_${DateTime.now().millisecondsSinceEpoch}', chatId: chatId,
+        senderId: user?.uid ?? 'user_001', senderName: user?.name ?? 'Alex Johnson',
+        text: text, mediaType: mediaType, readBy: [user?.uid ?? 'user_001'],
+        createdAt: DateTime.now());
+      mockMessages[chatId] = [...(mockMessages[chatId] ?? []), msg];
+      final i = _chats.indexWhere((c) => c.id == chatId);
+      if (i != -1) {
+        final c = _chats[i];
+        _chats[i] = ChatModel(id: c.id, type: c.type, participants: c.participants,
+          groupName: c.groupName, lastMessage: text, lastMessageAt: DateTime.now(),
+          unreadCount: c.unreadCount, createdBy: c.createdBy, createdAt: c.createdAt);
+      }
+      notifyListeners(); return;
+    }
     if (_uid == null) return;
     final user = _auth.currentUser!;
     final msgRef = _db.collection('chats').doc(chatId).collection('messages').doc();
@@ -799,11 +892,23 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> markAsRead(String chatId) async {
+    if (isMock) return;
     if (_uid == null) return;
     await _db.collection('chats').doc(chatId).update({'unreadCount.$_uid': 0});
   }
 
   Future<String> getOrCreateDm(String otherUid) async {
+    if (isMock) {
+      final existing = _chats.where((c) => c.type == 'dm' && c.participants.contains(otherUid)).firstOrNull;
+      if (existing != null) return existing.id;
+      final newId = 'chat_new_$otherUid';
+      final other = mockUsers.where((u) => u.uid == otherUid).firstOrNull;
+      _chats.add(ChatModel(id: newId, type: 'dm', participants: [_uid!, otherUid],
+        groupName: other?.name ?? 'User', lastMessage: null, lastMessageAt: null,
+        unreadCount: {}, createdBy: _uid!, createdAt: DateTime.now()));
+      notifyListeners();
+      return newId;
+    }
     if (_uid == null) return '';
     final snap = await _db.collection('chats')
         .where('type', isEqualTo: 'dm')
@@ -821,15 +926,18 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> setTyping(String chatId, bool isTyping) async {
+    if (isMock) return;
     if (_uid == null) return;
     await _db.collection('chats').doc(chatId).collection('typing').doc(_uid)
         .set({'isTyping': isTyping, 'at': FieldValue.serverTimestamp()});
   }
 
-  Stream<Map<String, bool>> watchTyping(String chatId) =>
-    _db.collection('chats').doc(chatId).collection('typing').snapshots()
+  Stream<Map<String, bool>> watchTyping(String chatId) {
+    if (isMock) return Stream.value({});
+    return _db.collection('chats').doc(chatId).collection('typing').snapshots()
         .map((s) => Map.fromEntries(
             s.docs.map((d) => MapEntry(d.id, d.data()['isTyping'] as bool? ?? false))));
+  }
 
   @override
   void dispose() { _chatsSub?.cancel(); super.dispose(); }
@@ -837,27 +945,36 @@ class ChatProvider extends ChangeNotifier {
 
 // ─── Real Event Provider ─────────────────────────────────────
 class EventProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   List<EventModel> _events = [];
   final Set<String> _rsvpd = {};
   StreamSubscription? _eventsSub;
+  AuthProvider? _storedAuth;
 
   List<EventModel> get events => _events;
-  String? get _uid => _auth.currentUser?.uid;
+  String? get _uid => isMock ? (_storedAuth?.currentUser?.uid ?? 'user_001') : _auth.currentUser?.uid;
+
+  EventProvider({this.isMock = false}) {
+    if (isMock) { _events = List.from(mockEvents); _rsvpd.add('evt_004'); }
+  }
 
   void updateAuth(AuthProvider auth) {
+    _storedAuth = auth;
+    if (isMock) return;
     _eventsSub?.cancel();
-    _eventsSub = _db.collection('events')
-        .orderBy('date')
-        .snapshots()
-        .listen((snap) {
+    _eventsSub = _db.collection('events').orderBy('date').snapshots().listen((snap) {
       _events = snap.docs.map((d) => EventModel.fromFirestore(d)).toList();
       notifyListeners();
     });
   }
 
   Future<void> toggleRsvp(String eventId) async {
+    if (isMock) {
+      if (_rsvpd.contains(eventId)) { _rsvpd.remove(eventId); } else { _rsvpd.add(eventId); }
+      notifyListeners(); return;
+    }
     if (_uid == null) return;
     final rsvpRef = _db.collection('events').doc(eventId).collection('rsvps').doc(_uid);
     final doc = await rsvpRef.get();
@@ -878,6 +995,7 @@ class EventProvider extends ChangeNotifier {
   }
 
   Future<bool> hasRsvped(String eventId) async {
+    if (isMock) return _rsvpd.contains(eventId);
     if (_uid == null) return false;
     if (_rsvpd.contains(eventId)) return true;
     final doc = await _db.collection('events').doc(eventId).collection('rsvps').doc(_uid).get();
@@ -888,6 +1006,7 @@ class EventProvider extends ChangeNotifier {
   bool isRsvpd(String eventId) => _rsvpd.contains(eventId);
 
   void addEvent(EventModel event) {
+    if (isMock) { _events.insert(0, event); notifyListeners(); return; }
     _db.collection('events').doc().set(event.toFirestore());
     notifyListeners();
   }
@@ -898,6 +1017,7 @@ class EventProvider extends ChangeNotifier {
 
 // ─── Real Group Provider ─────────────────────────────────────
 class GroupProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   List<GroupModel> _groups = [];
@@ -906,9 +1026,14 @@ class GroupProvider extends ChangeNotifier {
 
   List<GroupModel> get groups => _groups;
   List<GroupModel> get myGroups => _groups.where((g) => _joined.contains(g.id)).toList();
-  String? get _uid => _auth.currentUser?.uid;
+  String? get _uid => isMock ? null : _auth.currentUser?.uid;
+
+  GroupProvider({this.isMock = false}) {
+    if (isMock) { _groups = List.from(mockGroups); _joined.addAll({'grp_001', 'grp_002'}); }
+  }
 
   void updateAuth(AuthProvider auth) {
+    if (isMock) return;
     _groupsSub?.cancel();
     _groupsSub = _db.collection('groups')
         .orderBy('memberCount', descending: true)
@@ -916,24 +1041,23 @@ class GroupProvider extends ChangeNotifier {
         .snapshots()
         .listen((snap) {
       _groups = snap.docs.map((d) => GroupModel.fromFirestore(d)).toList();
-      // Update joined set
       if (_uid != null) {
         _joined.clear();
-        for (final g in _groups) {
-          if (g.members.contains(_uid)) _joined.add(g.id);
-        }
+        for (final g in _groups) { if (g.members.contains(_uid)) _joined.add(g.id); }
       }
       notifyListeners();
     });
   }
 
   Future<GroupModel?> getGroup(String groupId) async {
+    if (isMock) return _groups.where((g) => g.id == groupId).firstOrNull;
     final doc = await _db.collection('groups').doc(groupId).get();
     if (!doc.exists) return null;
     return GroupModel.fromFirestore(doc);
   }
 
   Future<void> joinGroup(String groupId) async {
+    if (isMock) { _joined.add(groupId); notifyListeners(); return; }
     if (_uid == null) return;
     await _db.collection('groups').doc(groupId).update({
       'members': FieldValue.arrayUnion([_uid]), 'memberCount': FieldValue.increment(1),
@@ -943,6 +1067,7 @@ class GroupProvider extends ChangeNotifier {
   }
 
   Future<void> leaveGroup(String groupId) async {
+    if (isMock) { _joined.remove(groupId); notifyListeners(); return; }
     if (_uid == null) return;
     await _db.collection('groups').doc(groupId).update({
       'members': FieldValue.arrayRemove([_uid]), 'memberCount': FieldValue.increment(-1),
@@ -954,6 +1079,7 @@ class GroupProvider extends ChangeNotifier {
   bool isMember(String groupId) => _joined.contains(groupId);
 
   void createGroup(GroupModel group) {
+    if (isMock) { _groups.insert(0, group); _joined.add(group.id); notifyListeners(); return; }
     _db.collection('groups').doc().set(group.toFirestore());
     if (group.id.isNotEmpty) _joined.add(group.id);
     notifyListeners();
@@ -965,38 +1091,52 @@ class GroupProvider extends ChangeNotifier {
 
 // ─── Real Match Provider ─────────────────────────────────────
 class MatchProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   List<UserModel> _candidates = [];
   final List<MatchModel> _matches = [];
   bool _loading = false;
+  AuthProvider? _storedAuth;
 
   bool get loading => _loading;
   List<UserModel> get candidates => _candidates;
   List<MatchModel> get matches => _matches;
-  String? get _uid => _auth.currentUser?.uid;
+  String? get _uid => isMock ? (_storedAuth?.currentUser?.uid ?? 'user_001') : _auth.currentUser?.uid;
 
-  void updateAuth(AuthProvider auth) {}
+  MatchProvider({this.isMock = false}) {
+    if (isMock) _candidates = List.from(mockUsers);
+  }
+
+  void updateAuth(AuthProvider auth) {
+    _storedAuth = auth;
+  }
 
   Future<void> loadCandidates() async {
+    if (isMock) { _candidates = List.from(mockUsers); notifyListeners(); return; }
     if (_uid == null) return;
     _loading = true; notifyListeners();
-    final snap = await _db.collection('users')
-        .where('role', isEqualTo: 'user')
-        .limit(20).get();
-    _candidates = snap.docs
-        .map((d) => UserModel.fromFirestore(d))
-        .where((u) => u.uid != _uid).toList();
+    final snap = await _db.collection('users').where('role', isEqualTo: 'user').limit(20).get();
+    _candidates = snap.docs.map((d) => UserModel.fromFirestore(d)).where((u) => u.uid != _uid).toList();
     _loading = false; notifyListeners();
   }
 
   Future<void> likeUser(String targetUid, String matchType) async {
-    if (_uid == null) return;
     _candidates.removeWhere((u) => u.uid == targetUid);
-    // Check if target already liked us
+    if (isMock) {
+      if (DateTime.now().millisecond % 2 == 0) {
+        final matched = mockUsers.where((u) => u.uid == targetUid).firstOrNull;
+        if (matched != null) {
+          _matches.add(MatchModel(id: 'match_$targetUid', userA: _uid ?? 'user_001',
+            userB: targetUid, status: 'matched', matchType: matchType,
+            likedAt: DateTime.now(), matchedAt: DateTime.now()));
+        }
+      }
+      notifyListeners(); return;
+    }
+    if (_uid == null) return;
     final existing = await _db.collection('matches')
-        .where('userA', isEqualTo: targetUid)
-        .where('userB', isEqualTo: _uid)
+        .where('userA', isEqualTo: targetUid).where('userB', isEqualTo: _uid)
         .where('status', isEqualTo: 'pending').get();
     if (existing.docs.isNotEmpty) {
       await existing.docs.first.reference.update({'status': 'matched', 'matchedAt': FieldValue.serverTimestamp()});
@@ -1012,8 +1152,9 @@ class MatchProvider extends ChangeNotifier {
   }
 
   Future<void> passUser(String targetUid) async {
-    if (_uid == null) return;
     _candidates.removeWhere((u) => u.uid == targetUid);
+    if (isMock) { notifyListeners(); return; }
+    if (_uid == null) return;
     await _db.collection('matches').add({
       'userA': _uid, 'userB': targetUid, 'status': 'passed',
       'matchType': 'none', 'likedAt': FieldValue.serverTimestamp(),
@@ -1024,6 +1165,7 @@ class MatchProvider extends ChangeNotifier {
 
 // ─── Real Notification Provider ──────────────────────────────
 class NotificationProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   List<NotificationModel> _notifications = [];
   StreamSubscription? _notifSub;
@@ -1031,16 +1173,18 @@ class NotificationProvider extends ChangeNotifier {
   List<NotificationModel> get notifications => _notifications;
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
 
+  NotificationProvider({this.isMock = false}) {
+    if (isMock) _notifications = List.from(mockNotifications);
+  }
+
   void updateAuth(AuthProvider auth) {
+    if (isMock) return;
     _notifSub?.cancel();
     final uid = auth.currentUser?.uid;
     if (uid != null) {
       _notifSub = _db.collection('notifications')
-          .where('userId', isEqualTo: uid)
-          .orderBy('createdAt', descending: true)
-          .limit(50)
-          .snapshots()
-          .listen((snap) {
+          .where('userId', isEqualTo: uid).orderBy('createdAt', descending: true).limit(50)
+          .snapshots().listen((snap) {
         _notifications = snap.docs.map((d) => NotificationModel.fromFirestore(d)).toList();
         notifyListeners();
       });
@@ -1050,35 +1194,41 @@ class NotificationProvider extends ChangeNotifier {
   Stream<List<NotificationModel>> watchNotifications() => Stream.value(_notifications);
 
   Future<void> markAsRead(String id) async {
-    await _db.collection('notifications').doc(id).update({'isRead': true});
     final i = _notifications.indexWhere((n) => n.id == id);
     if (i != -1) {
       final n = _notifications[i];
       _notifications[i] = NotificationModel(id: n.id, userId: n.userId,
         type: n.type, title: n.title, body: n.body,
-        imageUrl: n.imageUrl, deepLink: n.deepLink,
-        isRead: true, createdAt: n.createdAt);
+        imageUrl: n.imageUrl, deepLink: n.deepLink, isRead: true, createdAt: n.createdAt);
       notifyListeners();
     }
+    if (isMock) return;
+    await _db.collection('notifications').doc(id).update({'isRead': true});
   }
 
   Future<void> markAllAsRead() async {
+    for (int i = 0; i < _notifications.length; i++) {
+      final n = _notifications[i];
+      _notifications[i] = NotificationModel(id: n.id, userId: n.userId,
+        type: n.type, title: n.title, body: n.body,
+        imageUrl: n.imageUrl, deepLink: n.deepLink, isRead: true, createdAt: n.createdAt);
+    }
+    notifyListeners();
+    if (isMock) return;
     final uid = _notifications.isNotEmpty ? _notifications.first.userId : null;
     if (uid == null) return;
     final snap = await _db.collection('notifications')
-        .where('userId', isEqualTo: uid)
-        .where('isRead', isEqualTo: false).get();
+        .where('userId', isEqualTo: uid).where('isRead', isEqualTo: false).get();
     final batch = _db.batch();
-    for (final doc in snap.docs) {
-      batch.update(doc.reference, {'isRead': true});
-    }
+    for (final doc in snap.docs) { batch.update(doc.reference, {'isRead': true}); }
     await batch.commit();
   }
 
   Future<void> delete(String id) async {
-    await _db.collection('notifications').doc(id).delete();
     _notifications.removeWhere((n) => n.id == id);
     notifyListeners();
+    if (isMock) return;
+    await _db.collection('notifications').doc(id).delete();
   }
 
   @override
@@ -1087,21 +1237,25 @@ class NotificationProvider extends ChangeNotifier {
 
 // ─── Real Trip Provider ──────────────────────────────────────
 class TripProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   List<TripModel> _trips = [];
   StreamSubscription? _tripsSub;
 
   List<TripModel> get trips => _trips;
 
+  TripProvider({this.isMock = false}) {
+    if (isMock) _trips = List.from(mockTrips);
+  }
+
   void updateAuth(AuthProvider auth) {
+    if (isMock) return;
     _tripsSub?.cancel();
     final uid = auth.currentUser?.uid;
     if (uid != null) {
       _tripsSub = _db.collection('trips')
-          .where('userId', isEqualTo: uid)
-          .orderBy('startDate', descending: true)
-          .snapshots()
-          .listen((snap) {
+          .where('userId', isEqualTo: uid).orderBy('startDate', descending: true)
+          .snapshots().listen((snap) {
         _trips = snap.docs.map((d) => TripModel.fromFirestore(d)).toList();
         notifyListeners();
       });
@@ -1109,14 +1263,16 @@ class TripProvider extends ChangeNotifier {
   }
 
   Future<void> addTrip(TripModel trip) async {
+    if (isMock) { _trips.insert(0, trip); notifyListeners(); return; }
     await _db.collection('trips').doc(trip.id).set(trip.toFirestore());
     notifyListeners();
   }
 
   Future<void> deleteTrip(String tripId) async {
-    await _db.collection('trips').doc(tripId).delete();
     _trips.removeWhere((t) => t.id == tripId);
     notifyListeners();
+    if (isMock) return;
+    await _db.collection('trips').doc(tripId).delete();
   }
 
   @override
@@ -1125,6 +1281,7 @@ class TripProvider extends ChangeNotifier {
 
 // ─── Real Promotion Provider ─────────────────────────────────
 class PromotionProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   List<PromotionModel> _promotions = [];
   StreamSubscription? _promoSub;
@@ -1133,17 +1290,21 @@ class PromotionProvider extends ChangeNotifier {
   List<PromotionModel> get activePromotions => _promotions.where((p) => p.isActive).toList();
   List<PromotionModel> get expiredPromotions => _promotions.where((p) => !p.isActive).toList();
 
+  PromotionProvider({this.isMock = false}) {
+    if (isMock) _promotions = List.from(mockPromotions);
+  }
+
   void updateAuth(AuthProvider auth) {
+    if (isMock) return;
     _promoSub?.cancel();
-    _promoSub = _db.collection('promotions')
-        .snapshots()
-        .listen((snap) {
+    _promoSub = _db.collection('promotions').snapshots().listen((snap) {
       _promotions = snap.docs.map((d) => PromotionModel.fromFirestore(d)).toList();
       notifyListeners();
     });
   }
 
   void addPromotion(PromotionModel promo) {
+    if (isMock) { _promotions.insert(0, promo); notifyListeners(); return; }
     _db.collection('promotions').doc().set(promo.toFirestore());
     notifyListeners();
   }
@@ -1154,6 +1315,7 @@ class PromotionProvider extends ChangeNotifier {
 
 // ─── Real Search Provider ────────────────────────────────────
 class SearchProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   List<UserModel> _userResults = [];
   List<EventModel> _eventResults = [];
@@ -1167,31 +1329,41 @@ class SearchProvider extends ChangeNotifier {
   bool get loading => _loading;
   String get query => _query;
 
+  SearchProvider({this.isMock = false});
+
   void updateAuth(AuthProvider auth) {}
 
   Future<void> search(String q) async {
     if (q.isEmpty) { clear(); return; }
     _query = q; _loading = true; notifyListeners();
+    if (isMock) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      final lower = q.toLowerCase();
+      _userResults = [...mockUsers, mockCurrentUser]
+        .where((u) => u.name.toLowerCase().contains(lower) ||
+          (u.airline?.toLowerCase().contains(lower) ?? false)).toList();
+      _eventResults = mockEvents
+        .where((e) => e.title.toLowerCase().contains(lower) ||
+          e.location.toLowerCase().contains(lower)).toList();
+      _groupResults = mockGroups
+        .where((g) => g.name.toLowerCase().contains(lower) ||
+          g.tags.any((t) => t.toLowerCase().contains(lower))).toList();
+      _loading = false; notifyListeners(); return;
+    }
 
-    // Search users
     final userSnap = await _db.collection('users')
         .where('name', isGreaterThanOrEqualTo: q)
-        .where('name', isLessThanOrEqualTo: '$q\uf8ff')
-        .limit(10).get();
+        .where('name', isLessThanOrEqualTo: '$q\uf8ff').limit(10).get();
     _userResults = userSnap.docs.map((d) => UserModel.fromFirestore(d)).toList();
 
-    // Search events
     final eventSnap = await _db.collection('events')
         .where('title', isGreaterThanOrEqualTo: q)
-        .where('title', isLessThanOrEqualTo: '$q\uf8ff')
-        .limit(10).get();
+        .where('title', isLessThanOrEqualTo: '$q\uf8ff').limit(10).get();
     _eventResults = eventSnap.docs.map((d) => EventModel.fromFirestore(d)).toList();
 
-    // Search groups
     final groupSnap = await _db.collection('groups')
         .where('name', isGreaterThanOrEqualTo: q)
-        .where('name', isLessThanOrEqualTo: '$q\uf8ff')
-        .limit(10).get();
+        .where('name', isLessThanOrEqualTo: '$q\uf8ff').limit(10).get();
     _groupResults = groupSnap.docs.map((d) => GroupModel.fromFirestore(d)).toList();
 
     _loading = false; notifyListeners();
@@ -1205,6 +1377,7 @@ class SearchProvider extends ChangeNotifier {
 
 // ─── Real SafeCheck Provider ─────────────────────────────────
 class SafeCheckProvider extends ChangeNotifier {
+  final bool isMock;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   List<SafeCheckModel> _checkIns = [];
   SafeCheckModel? _myLatestCheckIn;
@@ -1214,19 +1387,18 @@ class SafeCheckProvider extends ChangeNotifier {
   List<SafeCheckModel> get checkIns => _checkIns;
   SafeCheckModel? get myLatestCheckIn => _myLatestCheckIn;
   bool get loading => _loading;
+  List<SafeCheckModel> get activeCheckIns => _checkIns.where((c) => c.isActive).toList();
 
-  List<SafeCheckModel> get activeCheckIns =>
-    _checkIns.where((c) => c.isActive).toList();
+  SafeCheckProvider({this.isMock = false}) {
+    if (isMock) _checkIns = List.from(mockSafeChecks);
+  }
 
   void updateAuth(AuthProvider auth) {
+    if (isMock) return;
     _checkInSub?.cancel();
     _checkInSub = _db.collection('safeChecks')
-        .orderBy('createdAt', descending: true)
-        .limit(100)
-        .snapshots()
-        .listen((snap) {
+        .orderBy('createdAt', descending: true).limit(100).snapshots().listen((snap) {
       _checkIns = snap.docs.map((d) => SafeCheckModel.fromFirestore(d)).toList();
-      // Update own latest
       final uid = auth.currentUser?.uid;
       if (uid != null) {
         final my = _checkIns.where((c) => c.userId == uid && c.isActive).toList();
@@ -1254,16 +1426,26 @@ class SafeCheckProvider extends ChangeNotifier {
     _loading = true; notifyListeners();
     final now = DateTime.now();
     final checkIn = SafeCheckModel(
-      id: '', userId: userId, userName: userName, userPhotoUrl: userPhotoUrl,
+      id: 'sc_${now.millisecondsSinceEpoch}', userId: userId,
+      userName: userName, userPhotoUrl: userPhotoUrl,
       status: status, message: message, city: city, lat: lat, lng: lng,
-      createdAt: now, expiresAt: now.add(const Duration(hours: 24)),
-    );
+      createdAt: now, expiresAt: now.add(const Duration(hours: 24)));
+    if (isMock) {
+      _checkIns.removeWhere((c) => c.userId == userId && c.isActive);
+      _checkIns.insert(0, checkIn);
+      _myLatestCheckIn = checkIn;
+      _loading = false; notifyListeners(); return;
+    }
     await _db.collection('safeChecks').add(checkIn.toFirestore());
     _loading = false; notifyListeners();
   }
 
   void clearMyCheckIn(String userId) {
-    // Mark as expired in Firestore
+    if (isMock) {
+      _checkIns.removeWhere((c) => c.userId == userId && c.isActive);
+      _myLatestCheckIn = null;
+      notifyListeners(); return;
+    }
     final active = _checkIns.where((c) => c.userId == userId && c.isActive);
     for (final c in active) {
       _db.collection('safeChecks').doc(c.id).update({'expiresAt': DateTime.now()});

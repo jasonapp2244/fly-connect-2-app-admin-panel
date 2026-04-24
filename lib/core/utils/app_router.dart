@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../constants/app_routes.dart';
@@ -55,6 +56,11 @@ import '../../features/admin/admin_notifications_page.dart';
 import '../../features/promotions/offers_screen.dart';
 import '../../features/common/not_found_screen.dart';
 
+// Each ShellRoute needs its own unique navigatorKey to avoid GlobalKey conflicts on web
+final _userShellKey     = GlobalKey<NavigatorState>(debugLabel: 'user-shell');
+final _businessShellKey = GlobalKey<NavigatorState>(debugLabel: 'biz-shell');
+final _adminShellKey    = GlobalKey<NavigatorState>(debugLabel: 'admin-shell');
+
 final GoRouter appRouter = GoRouter(
   initialLocation: AppRoutes.splash,
   debugLogDiagnostics: false,
@@ -106,6 +112,7 @@ final GoRouter appRouter = GoRouter(
 
     // ── User Shell (bottom nav) ───────────────────────────────
     ShellRoute(
+      navigatorKey: _userShellKey,
       builder: (context, state, child) => MainShell(child: child),
       routes: [
         GoRoute(path: AppRoutes.home, builder: (_, __) => const HomeScreen()),
@@ -118,6 +125,7 @@ final GoRouter appRouter = GoRouter(
 
     // ── Business Shell (bottom nav) ───────────────────────────
     ShellRoute(
+      navigatorKey: _businessShellKey,
       builder: (context, state, child) => BusinessShell(child: child),
       routes: [
         GoRoute(path: '/dashboard', builder: (_, __) => const DashboardScreen()),
@@ -128,6 +136,7 @@ final GoRouter appRouter = GoRouter(
 
     // ── Admin Shell (sidebar nav) ──────────────────────────────
     ShellRoute(
+      navigatorKey: _adminShellKey,
       builder: (context, state, child) => AdminShell(child: child),
       routes: [
         GoRoute(path: AppRoutes.adminDashboard, builder: (_, __) => const AdminDashboardPage()),
