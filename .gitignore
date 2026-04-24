@@ -44,8 +44,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Firebase credentials — do not commit
-android/app/google-services.json
+# Firebase — iOS plist / generated Dart options often stay machine-local
 ios/Runner/GoogleService-Info.plist
 lib/firebase_options.dart
 
