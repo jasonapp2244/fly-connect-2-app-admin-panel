@@ -1,11 +1,11 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_routes.dart';
+import '../../shared/providers/auth_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -32,34 +32,26 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   Future<void> _routeNext() async {
     if (!mounted) return;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
       final prefs = await SharedPreferences.getInstance();
       final seen = prefs.getBool('onboarding_seen') ?? false;
       if (!mounted) return;
       context.go(seen ? AppRoutes.login : AppRoutes.onboarding);
       return;
     }
-    // Already authenticated \u2014 fetch role, route to correct shell
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-      final role = doc.data()?['role'] as String? ?? 'user';
-      if (!mounted) return;
-      switch (role) {
-        case 'admin':
-          context.go('/admin/dashboard');
-          break;
-        case 'business':
-          context.go('/dashboard');
-          break;
-        default:
-          context.go(AppRoutes.home);
-      }
-    } catch (_) {
-      if (mounted) context.go(AppRoutes.home);
+    // Already logged in — route to correct shell based on role
+    final role = auth.userRole;
+    if (!mounted) return;
+    switch (role) {
+      case 'admin':
+        context.go('/admin/dashboard');
+        break;
+      case 'business':
+        context.go('/dashboard');
+        break;
+      default:
+        context.go(AppRoutes.home);
     }
   }
 

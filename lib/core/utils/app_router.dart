@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:go_router/go_router.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../constants/app_routes.dart';
@@ -60,37 +59,37 @@ final GoRouter appRouter = GoRouter(
   initialLocation: AppRoutes.splash,
   debugLogDiagnostics: false,
   redirect: (context, state) {
-    final firebaseUser = FirebaseAuth.instance.currentUser;
     final loc = state.matchedLocation;
 
-    // Unauthenticated users may only access public routes
     const publicRoutes = {
       AppRoutes.splash, AppRoutes.login, AppRoutes.signup,
       AppRoutes.otp, AppRoutes.forgotPassword, AppRoutes.onboarding,
     };
-    if (firebaseUser == null && !publicRoutes.contains(loc)) {
-      return AppRoutes.login;
-    }
 
-    // Authenticated role-based guards
-    if (firebaseUser != null) {
-      try {
-        final provider = Provider.of<AuthProvider>(context, listen: false);
-        final role = provider.userRole;
+    try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final isLoggedIn = auth.isLoggedIn;
 
-        // Admin routes: only admins allowed
+      // Unauthenticated — only public routes allowed
+      if (!isLoggedIn && !publicRoutes.contains(loc)) {
+        return AppRoutes.login;
+      }
+
+      // Role-based guards
+      if (isLoggedIn) {
+        final role = auth.userRole;
+
         if (loc.startsWith('/admin') && role != 'admin') {
           return role == 'business' ? '/dashboard' : AppRoutes.home;
         }
 
-        // Business shell: only business/admin allowed
         if ((loc == '/dashboard' || loc == '/promotions' || loc == '/business-events') &&
             role != 'business' && role != 'admin') {
           return AppRoutes.home;
         }
-      } catch (_) {
-        // Provider not yet available — let splash handle bootstrap
       }
+    } catch (_) {
+      // Provider not yet ready — let splash handle routing
     }
 
     return null;
