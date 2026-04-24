@@ -1,11 +1,21 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/app_router.dart';
 import 'shared/mock/mock_providers.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+      apiKey: 'AIzaSyAViMZd_Vv4rrFjO5r_Jbd3wogHAOlOUzo',
+      projectId: 'flyconnect-ab4f2',
+      messagingSenderId: '361504801284',
+      appId: '1:361504801284:android:0ebf704e8b9876fbc0ab51',
+      storageBucket: 'flyconnect-ab4f2.firebasestorage.app',
+    ),
+  );
   runApp(const FlyConnectApp());
 }
 
