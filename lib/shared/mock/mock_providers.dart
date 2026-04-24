@@ -4,7 +4,7 @@ import 'mock_data.dart';
 
 // ─── Mock Auth Provider ───────────────────────────────────────
 class AuthProvider extends ChangeNotifier {
-  UserModel? _currentUser = mockCurrentUser;
+  UserModel? _currentUser;
   bool _loading = false;
   String? _error;
 
