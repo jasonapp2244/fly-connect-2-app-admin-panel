@@ -1,4 +1,4 @@
-package com.example.flyconnect
+package com.appcurb.flyconnect
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -17,15 +17,7 @@ Future<void> main() async {
   await runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
     await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: FirebaseConfig.apiKey,
-        authDomain: FirebaseConfig.authDomain,
-        projectId: FirebaseConfig.projectId,
-        storageBucket: FirebaseConfig.storageBucket,
-        messagingSenderId: FirebaseConfig.messagingSenderId,
-        appId: FirebaseConfig.appId,
-        measurementId: FirebaseConfig.measurementId,
-      ),
+      options: FirebaseConfig.currentPlatformOptions,
     );
 
     // Crashlytics wiring (Crashlytics is not supported on web).

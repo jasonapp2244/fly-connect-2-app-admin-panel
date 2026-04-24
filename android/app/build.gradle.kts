@@ -4,8 +4,6 @@ import java.io.FileInputStream
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // Google Services (Firebase) \u2014 required for google-services.json to be processed
-    id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -72,4 +70,17 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// google-services.json is gitignored; apply the plugin only when the file is present
+// (Firebase Console → Project settings → Your Android app → Download). Without it,
+// Gradle still builds; Firebase is initialized from Dart in lib/main.dart.
+val googleServicesJson = file("google-services.json")
+if (googleServicesJson.exists()) {
+    apply(plugin = "com.google.gms.google-services")
+} else {
+    logger.lifecycle(
+        "[flyconnect] No google-services.json — skipping com.google.gms.google-services. " +
+            "Add android/app/google-services.json for native FCM / Google Sign-In resource merging."
+    )
 }
