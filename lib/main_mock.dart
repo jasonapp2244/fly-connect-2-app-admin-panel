@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/app_router.dart';
+import 'shared/providers/auth_provider.dart' show AuthProvider;
 import 'shared/mock/mock_providers.dart';
 
 Future<void> main() async {
@@ -26,7 +27,8 @@ class FlyConnectApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        // Real AuthProvider in mock mode — handles mock credentials locally
+        ChangeNotifierProvider(create: (_) => AuthProvider(isMock: true)),
         ChangeNotifierProxyProvider<AuthProvider, UserProvider>(
           create: (_) => UserProvider(),
           update: (_, auth, p) { p!.updateAuth(auth); return p; }),

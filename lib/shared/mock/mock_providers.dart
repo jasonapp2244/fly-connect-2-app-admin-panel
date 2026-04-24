@@ -1,68 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import '../providers/auth_provider.dart';
 import 'mock_data.dart';
-
-// ─── Mock Auth Provider ───────────────────────────────────────
-class AuthProvider extends ChangeNotifier {
-  UserModel? _currentUser;
-  bool _loading = false;
-  String? _error;
-
-  UserModel? get currentUser => _currentUser;
-  dynamic get firebaseUser => _currentUser; // duck-typed stub
-  bool get loading => _loading;
-  String? get error => _error;
-  bool get isLoggedIn => _currentUser != null;
-  String get userRole => _currentUser?.role ?? 'user';
-
-  Future<bool> login(String email, String password) async {
-    _loading = true; notifyListeners();
-    await Future.delayed(const Duration(milliseconds: 800));
-    final e = email.trim().toLowerCase();
-    if (e == 'business@flyconnect.com' && password == 'business123') {
-      _currentUser = mockBusinessUser;
-    } else if (e == 'emirates@flyconnect.com' && password == 'emirates123') {
-      _currentUser = mockBusinessUser2;
-    } else if (e == 'sarah@flyconnect.com' && password == 'sarah123') {
-      _currentUser = mockCurrentUser2;
-    } else {
-      // Default: any other email/password logs in as user account 1
-      _currentUser = mockCurrentUser;
-    }
-    _loading = false; notifyListeners();
-    return true;
-  }
-
-  Future<bool> signup({required String name, required String email,
-    required String password, String? phone, String? airline,
-    String? airport, String? position, String? city, String? state,
-    String role = 'user', String? bio}) async {
-    _loading = true; notifyListeners();
-    await Future.delayed(const Duration(milliseconds: 800));
-    _currentUser = UserModel(uid: 'user_new', name: name, email: email,
-      airline: airline, airport: airport, position: position,
-      city: city, state: state, role: role, bio: bio,
-      createdAt: DateTime.now(),
-      hobbies: [], passportStamps: [], travelHistory: []);
-    _loading = false; notifyListeners();
-    return true;
-  }
-
-  void switchUser(UserModel user) {
-    _currentUser = user;
-    notifyListeners();
-  }
-
-  Future<void> logout() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    _currentUser = null;
-    notifyListeners();
-  }
-}
 
 // ─── Mock User Provider ───────────────────────────────────────
 class UserProvider extends ChangeNotifier {
-  UserModel? _currentUser = mockCurrentUser;
+  UserModel? _currentUser;
   final Set<String> _following = {'user_002', 'user_006'};
 
   UserModel? get currentUser => _currentUser;
@@ -74,8 +17,10 @@ class UserProvider extends ChangeNotifier {
   }
 
   Future<UserModel?> fetchUser(String uid) async {
-    if (uid == 'user_001') return mockCurrentUser;
-    if (uid == 'biz_001') return mockBusinessUser;
+    if (uid == 'mock_alex' || uid == 'user_001') return mockCurrentUser;
+    if (uid == 'mock_biz1' || uid == 'biz_001') return mockBusinessUser;
+    if (uid == 'mock_biz2' || uid == 'biz_002') return mockBusinessUser2;
+    if (uid == 'mock_sarah' || uid == 'user_007') return mockCurrentUser2;
     return mockUsers.where((u) => u.uid == uid).firstOrNull;
   }
 
@@ -101,12 +46,12 @@ class UserProvider extends ChangeNotifier {
 class PostProvider extends ChangeNotifier {
   final List<PostModel> _feed = List.from(mockPosts);
   final Set<String> _liked = {'post_003'};
+  final Set<String> _saved = {};
   bool get loading => false;
   List<PostModel> get feed => _feed;
 
   void updateAuth(AuthProvider auth) {}
-
-  void listenFeed() {} // no-op in mock
+  void listenFeed() {}
 
   Future<void> likePost(String postId) async {
     _liked.add(postId);
@@ -137,6 +82,9 @@ class PostProvider extends ChangeNotifier {
   }
 
   Future<bool> isLiked(String postId) async => _liked.contains(postId);
+  Future<void> savePost(String postId) async { _saved.add(postId); notifyListeners(); }
+  Future<void> unsavePost(String postId) async { _saved.remove(postId); notifyListeners(); }
+  Future<bool> isSaved(String postId) async => _saved.contains(postId);
 
   Stream<List<CommentModel>> watchComments(String postId) => Stream.value([
     CommentModel(id: 'c1', postId: postId, authorId: 'user_002',
@@ -148,7 +96,6 @@ class PostProvider extends ChangeNotifier {
   ]);
 
   Future<void> addComment(String postId, String text) async {}
-
   Future<void> reportPost(String postId) async {}
 
   Future<void> createPost({required String caption, List<String> mediaUrls = const [],
@@ -207,7 +154,6 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> setTyping(String chatId, bool isTyping) async {}
-
   Stream<Map<String, bool>> watchTyping(String chatId) => Stream.value({});
 }
 
@@ -226,7 +172,6 @@ class EventProvider extends ChangeNotifier {
   }
 
   Future<bool> hasRsvped(String eventId) async => _rsvpd.contains(eventId);
-
   bool isRsvpd(String eventId) => _rsvpd.contains(eventId);
 
   void addEvent(EventModel event) {
@@ -278,15 +223,12 @@ class MatchProvider extends ChangeNotifier {
   void updateAuth(AuthProvider auth) {}
 
   Future<void> loadCandidates() async {
-    _candidates
-      ..clear()
-      ..addAll(mockUsers);
+    _candidates..clear()..addAll(mockUsers);
     notifyListeners();
   }
 
   Future<void> likeUser(String targetUid, String matchType) async {
     _candidates.removeWhere((u) => u.uid == targetUid);
-    // Simulate 50% match rate
     if (DateTime.now().millisecond % 2 == 0) {
       final matched = mockUsers.where((u) => u.uid == targetUid).firstOrNull;
       if (matched != null) {
@@ -425,9 +367,7 @@ class SafeCheckProvider extends ChangeNotifier {
   List<SafeCheckModel> get checkIns => _checkIns;
   SafeCheckModel? get myLatestCheckIn => _myLatestCheckIn;
   bool get loading => _loading;
-
-  List<SafeCheckModel> get activeCheckIns =>
-    _checkIns.where((c) => c.isActive).toList();
+  List<SafeCheckModel> get activeCheckIns => _checkIns.where((c) => c.isActive).toList();
 
   void updateAuth(AuthProvider auth) {}
 
@@ -442,40 +382,22 @@ class SafeCheckProvider extends ChangeNotifier {
   }
 
   Future<void> checkIn({
-    required String status,
-    String? message,
-    required String city,
-    double? lat,
-    double? lng,
-    required String userId,
-    required String userName,
-    String? userPhotoUrl,
+    required String status, String? message, required String city,
+    double? lat, double? lng, required String userId,
+    required String userName, String? userPhotoUrl,
   }) async {
-    _loading = true;
-    notifyListeners();
+    _loading = true; notifyListeners();
     await Future.delayed(const Duration(milliseconds: 500));
-
     final now = DateTime.now();
     final checkIn = SafeCheckModel(
-      id: 'sc_${now.millisecondsSinceEpoch}',
-      userId: userId,
-      userName: userName,
-      userPhotoUrl: userPhotoUrl,
-      status: status,
-      message: message,
-      city: city,
-      lat: lat,
-      lng: lng,
-      createdAt: now,
-      expiresAt: now.add(const Duration(hours: 24)),
-    );
-
-    // Remove previous active check-in for this user
+      id: 'sc_${now.millisecondsSinceEpoch}', userId: userId,
+      userName: userName, userPhotoUrl: userPhotoUrl,
+      status: status, message: message, city: city, lat: lat, lng: lng,
+      createdAt: now, expiresAt: now.add(const Duration(hours: 24)));
     _checkIns.removeWhere((c) => c.userId == userId && c.isActive);
     _checkIns.insert(0, checkIn);
     _myLatestCheckIn = checkIn;
-    _loading = false;
-    notifyListeners();
+    _loading = false; notifyListeners();
   }
 
   void clearMyCheckIn(String userId) {

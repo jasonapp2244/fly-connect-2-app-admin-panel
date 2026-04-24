@@ -12,6 +12,69 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:crypto/crypto.dart';
 import '../models/models.dart';
 
+// ─── Mock credentials (used when isMock = true) ───────────────
+const _mockCredentials = {
+  'user@flyconnect.com':    ('user123',    'user'),
+  'sarah@flyconnect.com':   ('sarah123',   'user'),
+  'business@flyconnect.com':('business123','business'),
+  'emirates@flyconnect.com':('emirates123','business'),
+};
+
+UserModel _mockUserModelFor(String email, String role) {
+  switch (email) {
+    case 'sarah@flyconnect.com':
+      return UserModel(
+        uid: 'mock_sarah', name: 'Sarah Mitchell', email: email,
+        airline: 'British Airways', position: 'Flight Attendant',
+        airport: 'LHR', city: 'London', state: 'England',
+        bio: 'Cabin crew with a passion for discovering hidden gems 🌍',
+        hobbies: ['Travel','Photography','Yoga','Reading'],
+        matchType: 'buddy', followerCount: 843, followingCount: 210, postCount: 31,
+        passportStamps: ['GB','US','FR','IT','JP','AU','AE','TH'],
+        travelHistory: ['New York','Paris','Tokyo','Sydney'],
+        isVerified: true, role: 'user',
+        createdAt: DateTime.now().subtract(const Duration(days: 220)),
+        photoUrl: 'https://i.pravatar.cc/200?img=25',
+      );
+    case 'business@flyconnect.com':
+      return UserModel(
+        uid: 'mock_biz1', name: 'Sky Lounge NYC', email: email,
+        role: 'business', position: 'Airport Lounge', airport: 'JFK',
+        city: 'New York', state: 'NY',
+        bio: 'Premium airport lounge at JFK Terminal 4.',
+        photoUrl: 'https://picsum.photos/seed/lounge/200',
+        followerCount: 2840, followingCount: 0, postCount: 12,
+        passportStamps: [], travelHistory: [], hobbies: [],
+        isVerified: true, createdAt: DateTime.now().subtract(const Duration(days: 180)),
+      );
+    case 'emirates@flyconnect.com':
+      return UserModel(
+        uid: 'mock_biz2', name: 'Emirates Business Lounge', email: email,
+        role: 'business', position: 'Airlines', airport: 'DXB',
+        city: 'Dubai', state: 'Dubai',
+        bio: 'Official Emirates lounge at Dubai International.',
+        photoUrl: 'https://picsum.photos/seed/emirates/200',
+        followerCount: 5120, followingCount: 0, postCount: 28,
+        passportStamps: [], travelHistory: [], hobbies: [],
+        isVerified: true, createdAt: DateTime.now().subtract(const Duration(days: 300)),
+      );
+    default: // user@flyconnect.com and any other email
+      return UserModel(
+        uid: 'mock_alex', name: 'Alex Johnson', email: email,
+        airline: 'Delta Air Lines', position: 'Pilot',
+        airport: 'JFK', city: 'New York', state: 'NY',
+        bio: 'Senior pilot with 12 years of experience ✈️',
+        hobbies: ['Photography','Hiking','Coffee','Travel','Fitness'],
+        matchType: 'buddy', followerCount: 1284, followingCount: 342, postCount: 47,
+        passportStamps: ['US','GB','JP','FR','DE','AU','TH','AE','SG','IT'],
+        travelHistory: ['London','Tokyo','Paris','Berlin','Sydney'],
+        isVerified: true, role: 'user',
+        createdAt: DateTime.now().subtract(const Duration(days: 365)),
+        photoUrl: 'https://i.pravatar.cc/200?img=11',
+      );
+  }
+}
+
 // ─── Real Auth Provider ──────────────────────────────────────
 class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -20,22 +83,27 @@ class AuthProvider extends ChangeNotifier {
   bool _loading = false;
   String? _error;
 
+  // When true, login uses mock credentials instead of Firebase Auth
+  final bool isMock;
+
   UserModel? get currentUser => _currentUser;
-  dynamic get firebaseUser => _auth.currentUser;
+  dynamic get firebaseUser => isMock ? _currentUser : _auth.currentUser;
   bool get loading => _loading;
   String? get error => _error;
-  bool get isLoggedIn => _auth.currentUser != null;
+  bool get isLoggedIn => isMock ? _currentUser != null : _auth.currentUser != null;
   String get userRole => _currentUser?.role ?? 'user';
 
-  AuthProvider() {
-    _auth.authStateChanges().listen((user) async {
-      if (user != null) {
-        await _fetchUser(user.uid);
-      } else {
-        _currentUser = null;
-      }
-      notifyListeners();
-    });
+  AuthProvider({this.isMock = false}) {
+    if (!isMock) {
+      _auth.authStateChanges().listen((user) async {
+        if (user != null) {
+          await _fetchUser(user.uid);
+        } else {
+          _currentUser = null;
+        }
+        notifyListeners();
+      });
+    }
   }
 
   Future<void> _fetchUser(String uid) async {
@@ -47,6 +115,21 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> login(String email, String password) async {
     _loading = true; _error = null; notifyListeners();
+
+    if (isMock) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      final entry = _mockCredentials[email.trim().toLowerCase()];
+      if (entry != null && entry.$1 == password) {
+        _currentUser = _mockUserModelFor(email.trim().toLowerCase(), entry.$2);
+        _loading = false; notifyListeners();
+        return true;
+      }
+      // Any unrecognised email/password still logs in as the default user
+      _currentUser = _mockUserModelFor(email.trim().toLowerCase(), 'user');
+      _loading = false; notifyListeners();
+      return true;
+    }
+
     try {
       final cred = await _auth.signInWithEmailAndPassword(email: email, password: password);
       await _fetchUser(cred.user!.uid);
@@ -69,6 +152,21 @@ class AuthProvider extends ChangeNotifier {
     String? city, String? state, String role = 'user', String? bio,
   }) async {
     _loading = true; _error = null; notifyListeners();
+
+    if (isMock) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      _currentUser = UserModel(
+        uid: 'mock_new_${DateTime.now().millisecondsSinceEpoch}',
+        name: name, email: email, phone: phone,
+        airline: airline, airport: airport, position: position,
+        city: city, state: state, role: role, bio: bio,
+        createdAt: DateTime.now(),
+        hobbies: [], passportStamps: [], travelHistory: [],
+      );
+      _loading = false; notifyListeners();
+      return true;
+    }
+
     try {
       final cred = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       await cred.user!.updateDisplayName(name);
@@ -210,10 +308,14 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> logout() async {
     _error = null;
+    if (isMock) {
+      _currentUser = null;
+      notifyListeners();
+      return true;
+    }
     try {
       if (!kIsWeb) {
         // Sign out of Google too on native, otherwise re-login skips picker.
-        // Safe to swallow \u2014 means user wasn't signed in via Google.
         try { await GoogleSignIn().signOut(); } catch (_) {}
       }
       await _auth.signOut();
@@ -221,7 +323,6 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      // Firebase sign-out failed \u2014 surface the error so UI can react.
       _error = 'Logout failed. Please check your connection and try again.';
       notifyListeners();
       return false;
