@@ -38,3 +38,18 @@
 
 # ===== Kotlin reflection stripping =====
 -keep class kotlin.Metadata { *; }
+
+# ===== shared_preferences =====
+-keep class androidx.preference.** { *; }
+
+# ===== url_launcher =====
+-keep class androidx.browser.** { *; }
+
+# ===== image_picker =====
+-keep class io.flutter.plugins.imagepicker.** { *; }
+
+# ===== General Android / Jetpack =====
+-keep class androidx.core.** { *; }
+-keep class androidx.activity.** { *; }
+-keep class androidx.fragment.** { *; }
+-dontwarn androidx.**
