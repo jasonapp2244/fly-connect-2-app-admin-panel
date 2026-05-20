@@ -31,14 +31,17 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 
   Future<void> _loadData() async {
-    await Future.wait([
-      _loadUserStats(),
-      _loadSafeCheckAlerts(),
-      _loadReportedContent(),
-      _loadCollectionCounts(),
-      _loadRecentActivity(),
-    ]);
-    if (mounted) setState(() => _loading = false);
+    try {
+      await Future.wait([
+        _loadUserStats().catchError((e) => debugPrint('[Dashboard] userStats: $e')),
+        _loadSafeCheckAlerts().catchError((e) => debugPrint('[Dashboard] safeCheckAlerts: $e')),
+        _loadReportedContent().catchError((e) => debugPrint('[Dashboard] reportedContent: $e')),
+        _loadCollectionCounts().catchError((e) => debugPrint('[Dashboard] collectionCounts: $e')),
+        _loadRecentActivity().catchError((e) => debugPrint('[Dashboard] recentActivity: $e')),
+      ]);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _loadUserStats() async {
@@ -80,22 +83,18 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 
   Future<void> _loadSafeCheckAlerts() async {
-    try {
-      final snap = await _db
-          .collection('safeChecks')
-          .where('status', isEqualTo: 'need_help')
-          .where('expiresAt', isGreaterThan: Timestamp.now())
-          .count()
-          .get();
-      _safeCheckAlerts = snap.count ?? 0;
-    } catch (_) {
-      final snap = await _db
-          .collection('safeChecks')
-          .where('status', isEqualTo: 'need_help')
-          .where('expiresAt', isGreaterThan: Timestamp.now())
-          .get();
-      _safeCheckAlerts = snap.docs.length;
-    }
+    // Use a single equality filter (no composite index needed),
+    // then filter by expiry in memory.
+    final snap = await _db
+        .collection('safeChecks')
+        .where('status', isEqualTo: 'need_help')
+        .get();
+    final now = DateTime.now();
+    _safeCheckAlerts = snap.docs.where((d) {
+      final exp = d.data()['expiresAt'];
+      if (exp is Timestamp) return exp.toDate().isAfter(now);
+      return true; // no expiry = still active
+    }).length;
   }
 
   Future<void> _loadReportedContent() async {

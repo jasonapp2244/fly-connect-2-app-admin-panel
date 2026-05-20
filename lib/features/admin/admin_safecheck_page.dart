@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
+import 'admin_audit_helper.dart';
 
 class AdminSafeCheckPage extends StatefulWidget {
   const AdminSafeCheckPage({super.key});
@@ -24,6 +25,7 @@ class _AdminSafeCheckPageState extends State<AdminSafeCheckPage> {
         .limit(50)
         .snapshots()
         .listen((snapshot) {
+      if (!mounted) return;
       setState(() {
         _checkIns = snapshot.docs.map((doc) {
           final data = doc.data();
@@ -32,6 +34,9 @@ class _AdminSafeCheckPageState extends State<AdminSafeCheckPage> {
         }).toList();
         _loading = false;
       });
+    }, onError: (e) {
+      debugPrint('[AdminSafeCheck] stream error: $e');
+      if (mounted) setState(() => _loading = false);
     });
   }
 
@@ -97,6 +102,12 @@ class _AdminSafeCheckPageState extends State<AdminSafeCheckPage> {
         .collection('safeChecks')
         .doc(docId)
         .update({'expiresAt': Timestamp.fromDate(DateTime.now())});
+    await logAdminAction(
+      action: 'resolve_safecheck',
+      targetType: 'safecheck',
+      targetId: docId,
+      details: 'Marked check-in $docId as resolved',
+    );
   }
 
   Future<void> _escalateCheckIn(String docId, String userName) async {
@@ -227,7 +238,9 @@ class _AdminSafeCheckPageState extends State<AdminSafeCheckPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SizedBox.expand(
+        child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
     }
 
     final needHelpCount = _countByStatus('need_help');
@@ -561,24 +574,7 @@ class _AdminSafeCheckPageState extends State<AdminSafeCheckPage> {
                       color: AppColors.textSecondary, fontSize: 11)),
             ],
           ),
-          if (isUrgent) ...[
-            const SizedBox(width: 12),
-            ElevatedButton(
-              onPressed: () => _resolveCheckIn(checkIn['id']),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
-                elevation: 0,
-                textStyle:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              ),
-              child: const Text('Resolve'),
-            ),
-          ],
+          // Inline Resolve button removed — Priority Queue section below has Resolve action.
         ],
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
+import 'admin_audit_helper.dart';
 
 class AdminEventsPage extends StatefulWidget {
   const AdminEventsPage({super.key});
@@ -22,19 +23,25 @@ class _AdminEventsPageState extends State<AdminEventsPage> {
 
   Future<void> _fetchEvents() async {
     setState(() => _loading = true);
-    final snapshot = await FirebaseFirestore.instance
-        .collection('events')
-        .orderBy('createdAt', descending: true)
-        .limit(50)
-        .get();
-    setState(() {
-      _events = snapshot.docs.map((doc) {
-        final data = doc.data();
-        data['id'] = doc.id;
-        return data;
-      }).toList();
-      _loading = false;
-    });
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .orderBy('createdAt', descending: true)
+          .limit(50)
+          .get();
+      if (!mounted) return;
+      setState(() {
+        _events = snapshot.docs.map((doc) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          return data;
+        }).toList();
+      });
+    } catch (e) {
+      debugPrint('[AdminEvents] fetch failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   List<Map<String, dynamic>> get _filteredEvents {
@@ -59,6 +66,12 @@ class _AdminEventsPageState extends State<AdminEventsPage> {
         .collection('events')
         .doc(docId)
         .update({'isApproved': true});
+    await logAdminAction(
+      action: 'approve_event',
+      targetType: 'event',
+      targetId: docId,
+      details: 'Approved event $docId',
+    );
     _fetchEvents();
   }
 
@@ -72,6 +85,12 @@ class _AdminEventsPageState extends State<AdminEventsPage> {
     );
     if (!confirmed) return;
     await FirebaseFirestore.instance.collection('events').doc(docId).delete();
+    await logAdminAction(
+      action: 'reject_event',
+      targetType: 'event',
+      targetId: docId,
+      details: 'Rejected & deleted event "$title"',
+    );
     _fetchEvents();
   }
 
@@ -80,6 +99,12 @@ class _AdminEventsPageState extends State<AdminEventsPage> {
         .collection('events')
         .doc(docId)
         .update({'isFeatured': !currentlyFeatured});
+    await logAdminAction(
+      action: currentlyFeatured ? 'unfeature_event' : 'feature_event',
+      targetType: 'event',
+      targetId: docId,
+      details: '${currentlyFeatured ? "Unfeatured" : "Featured"} event $docId',
+    );
     _fetchEvents();
   }
 
@@ -133,7 +158,9 @@ class _AdminEventsPageState extends State<AdminEventsPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SizedBox.expand(
+        child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
     }
 
     final filtered = _filteredEvents;
@@ -290,7 +317,7 @@ class _AdminEventsPageState extends State<AdminEventsPage> {
       ),
       child: IntrinsicHeight(
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Left accent bar
             Container(
@@ -416,38 +443,39 @@ class _AdminEventsPageState extends State<AdminEventsPage> {
               ),
             ),
 
-            // Action buttons
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (isPending)
+            // Action buttons (fixed width to avoid unbounded-width layout)
+            SizedBox(
+              width: 132,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (isPending)
+                      _actionBtn(
+                        label: 'Approve',
+                        color: AppColors.online,
+                        onPressed: () => _approveEvent(event['id']),
+                      ),
+                    if (isPending) const SizedBox(height: 6),
                     _actionBtn(
-                      label: 'Approve',
-                      color: AppColors.online,
-                      onPressed: () => _approveEvent(event['id']),
+                      label: isFeatured ? 'Unfeature' : 'Feature',
+                      color: isFeatured
+                          ? AppColors.textSecondary
+                          : AppColors.primary,
+                      textColor: isFeatured ? Colors.white : AppColors.dark,
+                      onPressed: () =>
+                          _toggleFeature(event['id'], isFeatured),
                     ),
-                  if (isPending) const SizedBox(height: 6),
-
-                  // Feature / Unfeature toggle
-                  _actionBtn(
-                    label: isFeatured ? 'Unfeature' : 'Feature',
-                    color:
-                        isFeatured ? AppColors.textSecondary : AppColors.primary,
-                    textColor: isFeatured ? Colors.white : AppColors.dark,
-                    onPressed: () =>
-                        _toggleFeature(event['id'], isFeatured),
-                  ),
-                  const SizedBox(height: 6),
-
-                  _actionBtn(
-                    label: 'Reject',
-                    color: AppColors.error,
-                    onPressed: () => _rejectEvent(event['id'], title),
-                    outlined: true,
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                    _actionBtn(
+                      label: 'Reject',
+                      color: AppColors.error,
+                      onPressed: () => _rejectEvent(event['id'], title),
+                      outlined: true,
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -463,31 +491,34 @@ class _AdminEventsPageState extends State<AdminEventsPage> {
     required VoidCallback onPressed,
     bool outlined = false,
   }) {
-    if (outlined) {
-      return OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: color,
-          side: BorderSide(color: color),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
-        child: Text(label),
-      );
-    }
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: textColor ?? Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        elevation: 0,
-        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-      ),
-      child: Text(label),
-    );
+    final btn = outlined
+        ? OutlinedButton(
+            onPressed: onPressed,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: color,
+              side: BorderSide(color: color),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              textStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            child: Text(label),
+          )
+        : ElevatedButton(
+            onPressed: onPressed,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: textColor ?? Colors.white,
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+              textStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            child: Text(label),
+          );
+    return SizedBox(width: 108, height: 32, child: btn);
   }
 }

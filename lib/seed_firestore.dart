@@ -197,7 +197,7 @@ class _SeedButtonState extends State<_SeedButton> {
           'validFrom': Timestamp.fromDate(now),
           'validTo': Timestamp.fromDate(now.add(Duration(days: p['days'] as int))),
           'maxRedemptions': p['max'], 'currentRedemptions': p['current'],
-          'views': p['views'], 'saves': p['saves'], 'isActive': true,
+          'views': p['views'], 'saves': p['saves'], 'isActive': true, 'isApproved': true,
         });
       }
 

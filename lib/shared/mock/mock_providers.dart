@@ -309,7 +309,8 @@ class TripProvider extends ChangeNotifier {
 class PromotionProvider extends ChangeNotifier {
   final List<PromotionModel> _promotions = List.from(mockPromotions);
   List<PromotionModel> get promotions => _promotions;
-  List<PromotionModel> get activePromotions => _promotions.where((p) => p.isActive).toList();
+  List<PromotionModel> get activePromotions =>
+      _promotions.where((p) => p.isActive && p.isApproved).toList();
   List<PromotionModel> get expiredPromotions => _promotions.where((p) => !p.isActive).toList();
   void updateAuth(AuthProvider auth) {}
 

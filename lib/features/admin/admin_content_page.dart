@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
+import 'admin_audit_helper.dart';
 
 class AdminContentPage extends StatefulWidget {
   const AdminContentPage({super.key});
@@ -27,15 +28,18 @@ class _AdminContentPageState extends State<AdminContentPage> {
       final snapshot = await FirebaseFirestore.instance
           .collection('posts')
           .where('isReported', isEqualTo: true)
-          .orderBy('reportCount', descending: true)
           .limit(50)
           .get();
+      final reports = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['docId'] = doc.id;
+        return data;
+      }).toList();
+      // Sort in memory to avoid composite index requirement
+      reports.sort((a, b) =>
+          (b['reportCount'] ?? 0).compareTo(a['reportCount'] ?? 0));
       setState(() {
-        _reports = snapshot.docs.map((doc) {
-          final data = doc.data();
-          data['docId'] = doc.id;
-          return data;
-        }).toList();
+        _reports = reports;
         _loading = false;
       });
     } catch (e, st) {
@@ -123,6 +127,12 @@ class _AdminContentPageState extends State<AdminContentPage> {
       'isReported': false,
       'reportCount': 0,
     });
+    await logAdminAction(
+      action: 'approve_post',
+      targetType: 'post',
+      targetId: report['docId'],
+      details: 'Cleared report on post ${report['docId']}',
+    );
     await _fetchReports();
   }
 
@@ -141,6 +151,12 @@ class _AdminContentPageState extends State<AdminContentPage> {
     if (!confirmed) return;
 
     await FirebaseFirestore.instance.collection('posts').doc(docId).delete();
+    await logAdminAction(
+      action: 'remove_post',
+      targetType: 'post',
+      targetId: report['docId'],
+      details: 'Removed reported post ${report['docId']}',
+    );
     await _fetchReports();
   }
 
@@ -163,6 +179,12 @@ class _AdminContentPageState extends State<AdminContentPage> {
         .collection('users')
         .doc(userId)
         .update({'isBanned': true});
+    await logAdminAction(
+      action: 'ban_user',
+      targetType: 'user',
+      targetId: report['authorId'] ?? '',
+      details: 'Banned user via content report',
+    );
     await _fetchReports();
   }
 

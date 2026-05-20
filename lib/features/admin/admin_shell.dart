@@ -15,9 +15,14 @@ class _NavItem {
 const _navItems = <_NavItem>[
   _NavItem(label: 'Dashboard', icon: Icons.grid_view_rounded, route: '/admin/dashboard'),
   _NavItem(label: 'Users', icon: Icons.people_outline, route: '/admin/users'),
+  _NavItem(label: 'Reports', icon: Icons.flag_outlined, route: '/admin/reports'),
   _NavItem(label: 'Content', icon: Icons.article_outlined, route: '/admin/content'),
   _NavItem(label: 'SafeCheck', icon: Icons.health_and_safety, route: '/admin/safecheck'),
   _NavItem(label: 'Events', icon: Icons.event_outlined, route: '/admin/events'),
+  _NavItem(label: 'Promotions', icon: Icons.local_offer_outlined, route: '/admin/promotions'),
+  _NavItem(label: 'Businesses', icon: Icons.verified_outlined, route: '/admin/business-verify'),
+  _NavItem(label: 'GDPR', icon: Icons.privacy_tip_outlined, route: '/admin/gdpr'),
+  _NavItem(label: 'Audit Log', icon: Icons.fact_check_outlined, route: '/admin/audit'),
   _NavItem(label: 'Analytics', icon: Icons.bar_chart_rounded, route: '/admin/analytics'),
   _NavItem(label: 'Notifications', icon: Icons.notifications_outlined, route: '/admin/notifications'),
 ];

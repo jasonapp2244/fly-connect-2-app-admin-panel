@@ -53,6 +53,11 @@ import '../../features/admin/admin_safecheck_page.dart';
 import '../../features/admin/admin_events_page.dart';
 import '../../features/admin/admin_analytics_page.dart';
 import '../../features/admin/admin_notifications_page.dart';
+import '../../features/admin/admin_reports_page.dart';
+import '../../features/admin/admin_promotions_page.dart';
+import '../../features/admin/admin_gdpr_page.dart';
+import '../../features/admin/admin_audit_page.dart';
+import '../../features/admin/admin_business_verification_page.dart';
 import '../../features/promotions/offers_screen.dart';
 import '../../features/common/not_found_screen.dart';
 
@@ -146,6 +151,11 @@ final GoRouter appRouter = GoRouter(
         GoRoute(path: AppRoutes.adminEvents, builder: (_, __) => const AdminEventsPage()),
         GoRoute(path: AppRoutes.adminAnalytics, builder: (_, __) => const AdminAnalyticsPage()),
         GoRoute(path: AppRoutes.adminNotifications, builder: (_, __) => const AdminNotificationsPage()),
+        GoRoute(path: AppRoutes.adminReports, builder: (_, __) => const AdminReportsPage()),
+        GoRoute(path: AppRoutes.adminPromotions, builder: (_, __) => const AdminPromotionsPage()),
+        GoRoute(path: AppRoutes.adminGdpr, builder: (_, __) => const AdminGdprPage()),
+        GoRoute(path: AppRoutes.adminAudit, builder: (_, __) => const AdminAuditPage()),
+        GoRoute(path: AppRoutes.adminBusinessVerify, builder: (_, __) => const AdminBusinessVerificationPage()),
       ],
     ),
 

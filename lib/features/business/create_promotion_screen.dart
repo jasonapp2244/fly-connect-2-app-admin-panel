@@ -100,13 +100,18 @@ class _CreatePromotionScreenState extends State<CreatePromotionScreen> {
         currentRedemptions: 0,
         views: 0,
         saves: 0,
-        isActive: true,
+        isActive: false,
+        isApproved: false,
       );
       if (!mounted) return;
       context.read<PromotionProvider>().addPromotion(newPromo);
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Promotion created successfully!'), backgroundColor: Colors.green));
+        const SnackBar(
+          content: Text('Promotion submitted! It will be visible to crew after admin approval.'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 4),
+        ));
     } catch (e) {
       if (!mounted) return;
       setState(() => _posting = false);

@@ -37,6 +37,11 @@ class AppRoutes {
   static const adminEvents        = '/admin/events';
   static const adminAnalytics     = '/admin/analytics';
   static const adminNotifications = '/admin/notifications';
+  static const adminReports      = '/admin/reports';
+  static const adminPromotions   = '/admin/promotions';
+  static const adminGdpr         = '/admin/gdpr';
+  static const adminAudit        = '/admin/audit';
+  static const adminBusinessVerify = '/admin/business-verify';
 
   // Deep-link capable
   static const userProfile   = '/users';         // /users/:userId

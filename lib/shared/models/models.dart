@@ -498,6 +498,7 @@ class PromotionModel {
   final int views;
   final int saves;
   final bool isActive;
+  final bool isApproved;
 
   const PromotionModel({
     required this.id, required this.businessId, required this.businessName,
@@ -505,6 +506,7 @@ class PromotionModel {
     required this.discountPercent, required this.validFrom, required this.validTo,
     required this.maxRedemptions, this.currentRedemptions = 0,
     this.views = 0, this.saves = 0, this.isActive = true,
+    this.isApproved = false,
   });
 
   factory PromotionModel.fromFirestore(DocumentSnapshot doc) {
@@ -526,6 +528,7 @@ class PromotionModel {
       views: d['views'] ?? 0,
       saves: d['saves'] ?? 0,
       isActive: d['isActive'] ?? true,
+      isApproved: d['isApproved'] ?? false,
     );
   }
 
@@ -536,6 +539,7 @@ class PromotionModel {
     'validTo': validTo, 'maxRedemptions': maxRedemptions,
     'currentRedemptions': currentRedemptions, 'views': views, 'saves': saves,
     'isActive': isActive,
+    'isApproved': isApproved,
   };
 }
 

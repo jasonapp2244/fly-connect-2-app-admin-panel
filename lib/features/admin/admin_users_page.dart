@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
+import 'admin_audit_helper.dart';
 
 class AdminUsersPage extends StatefulWidget {
   const AdminUsersPage({super.key});
@@ -96,20 +97,34 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     );
     if (!confirmed) return;
 
+    final newBanState = !currentlyBanned;
     await FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
-        .update({'isBanned': !currentlyBanned});
+        .update({'isBanned': newBanState});
+    await logAdminAction(
+      action: newBanState ? 'ban_user' : 'unban_user',
+      targetType: 'user',
+      targetId: user['uid'] ?? '',
+      details: '${newBanState ? "Banned" : "Unbanned"} ${user['name'] ?? user['email'] ?? 'user'}',
+    );
     await _fetchUsers();
   }
 
   Future<void> _toggleVerify(Map<String, dynamic> user) async {
     final uid = user['uid'] as String;
     final isVerified = user['isVerified'] == true;
+    final newVerifyState = !isVerified;
     await FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
-        .update({'isVerified': !isVerified});
+        .update({'isVerified': newVerifyState});
+    await logAdminAction(
+      action: newVerifyState ? 'verify_user' : 'unverify_user',
+      targetType: 'user',
+      targetId: user['uid'] ?? '',
+      details: '${newVerifyState ? "Verified" : "Unverified"} ${user['name'] ?? user['email'] ?? 'user'}',
+    );
     await _fetchUsers();
   }
 

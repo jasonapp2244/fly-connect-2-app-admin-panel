@@ -61,34 +61,38 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
   Future<void> _fetchCounts() async {
     setState(() => _loading = true);
     final Map<String, int> counts = {};
-    for (final collection in _collections) {
-      try {
-        final snapshot = await FirebaseFirestore.instance
-            .collection(collection)
-            .count()
-            .get();
-        counts[collection] = snapshot.count ?? 0;
-      } catch (_) {
+    try {
+      for (final collection in _collections) {
         try {
           final snapshot = await FirebaseFirestore.instance
               .collection(collection)
+              .count()
               .get();
-          counts[collection] = snapshot.docs.length;
+          counts[collection] = snapshot.count ?? 0;
         } catch (_) {
-          counts[collection] = 0;
+          try {
+            final snapshot = await FirebaseFirestore.instance
+                .collection(collection)
+                .get();
+            counts[collection] = snapshot.docs.length;
+          } catch (_) {
+            counts[collection] = 0;
+          }
         }
       }
+    } catch (e) {
+      debugPrint('[AdminAnalytics] fetch failed: $e');
+    } finally {
+      if (mounted) setState(() { _counts = counts; _loading = false; });
     }
-    setState(() {
-      _counts = counts;
-      _loading = false;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SizedBox.expand(
+        child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
     }
 
     final maxCount = _counts.values.isEmpty

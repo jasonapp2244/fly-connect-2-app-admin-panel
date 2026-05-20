@@ -1287,7 +1287,8 @@ class PromotionProvider extends ChangeNotifier {
   StreamSubscription? _promoSub;
 
   List<PromotionModel> get promotions => _promotions;
-  List<PromotionModel> get activePromotions => _promotions.where((p) => p.isActive).toList();
+  List<PromotionModel> get activePromotions =>
+      _promotions.where((p) => p.isActive && p.isApproved).toList();
   List<PromotionModel> get expiredPromotions => _promotions.where((p) => !p.isActive).toList();
 
   PromotionProvider({this.isMock = false}) {
