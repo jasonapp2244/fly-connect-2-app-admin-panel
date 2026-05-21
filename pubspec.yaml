@@ -58,6 +58,40 @@ dev_dependencies:
   mocktail: ^1.0.4
   fake_cloud_firestore: ^3.0.3
   firebase_auth_mocks: ^0.14.1
+  flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.1
+
+# ── App icon generation ─────────────────────────────────────────
+# Source: assets/images/app_icon.png (1024x1024 PNG)
+# Run: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/images/app_icon.png"
+  android: "launcher_icon"
+  ios: true
+  remove_alpha_ios: true
+  min_sdk_android: 21
+  adaptive_icon_background: "#1A1D27"
+  adaptive_icon_foreground: "assets/images/app_icon.png"
+  web:
+    generate: true
+    image_path: "assets/images/app_icon.png"
+    background_color: "#1A1D27"
+    theme_color: "#D4F53C"
+  windows:
+    generate: true
+    image_path: "assets/images/app_icon.png"
+    icon_size: 48
+
+# ── Native splash screen ────────────────────────────────────────
+# Run: dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#1A1D27"
+  image: "assets/images/app_icon.png"
+  android_12:
+    color: "#1A1D27"
+    image: "assets/images/app_icon.png"
+  ios: true
+  web: false
 
 flutter:
   uses-material-design: true
@@ -79,5 +113,5 @@ flutter:
   #       - asset: assets/fonts/Inter-ExtraBold.ttf
   #         weight: 800
   #
-  # assets:
-  #   - assets/images/
+  assets:
+    - assets/images/
