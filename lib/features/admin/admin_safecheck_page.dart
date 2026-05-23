@@ -680,57 +680,69 @@ class _AdminSafeCheckPageState extends State<AdminSafeCheckPage> {
             ),
           ],
           const SizedBox(height: 14),
-          Row(
+          // Wrap with fixed-width buttons to avoid the infinite-width
+          // assertion that hits when buttons live inside an unbounded Row
+          // (Flutter web is strict about this).
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              OutlinedButton.icon(
-                onPressed: () =>
-                    _sendAdminMessage(checkIn['id'], userName, userId),
-                icon: const Icon(Icons.message_outlined, size: 14),
-                label: const Text('Message'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.blue,
-                  side: const BorderSide(color: Colors.blue),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  textStyle: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (!isEscalated)
-                ElevatedButton.icon(
+              SizedBox(
+                width: 124,
+                height: 32,
+                child: OutlinedButton.icon(
                   onPressed: () =>
-                      _escalateCheckIn(checkIn['id'], userName),
-                  icon: const Icon(Icons.priority_high, size: 14),
-                  label: const Text('Escalate'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
+                      _sendAdminMessage(checkIn['id'], userName, userId),
+                  icon: const Icon(Icons.message_outlined, size: 14),
+                  label: const Text('Message'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.blue,
+                    side: const BorderSide(color: Colors.blue),
+                    padding: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8)),
-                    elevation: 0,
                     textStyle: const TextStyle(
                         fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                 ),
-              if (!isEscalated) const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: () => _resolveCheckIn(checkIn['id']),
-                icon: const Icon(Icons.check_circle_outline, size: 14),
-                label: const Text('Resolve'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.online,
-                  side: const BorderSide(color: AppColors.online),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  textStyle: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              if (!isEscalated)
+                SizedBox(
+                  width: 124,
+                  height: 32,
+                  child: ElevatedButton.icon(
+                    onPressed: () =>
+                        _escalateCheckIn(checkIn['id'], userName),
+                    icon: const Icon(Icons.priority_high, size: 14),
+                    label: const Text('Escalate'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      elevation: 0,
+                      textStyle: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              SizedBox(
+                width: 124,
+                height: 32,
+                child: OutlinedButton.icon(
+                  onPressed: () => _resolveCheckIn(checkIn['id']),
+                  icon: const Icon(Icons.check_circle_outline, size: 14),
+                  label: const Text('Resolve'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.online,
+                    side: const BorderSide(color: AppColors.online),
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                    textStyle: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
             ],
