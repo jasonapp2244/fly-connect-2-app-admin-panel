@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -102,6 +103,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _showVisibilitySheet(context)),
           _Tile(icon: Icons.block, label: 'Blocked Users',
             onTap: () => _blockedUsersSheet(context)),
+          _Tile(icon: Icons.download_for_offline_outlined, label: 'Request My Data',
+            onTap: () => _requestDataSheet(context)),
         ]),
         // Developer testing removed for production
         _Section(title: 'Support', children: [
@@ -275,6 +278,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ])));
   }
 
+  /// GDPR / CCPA "right to access" self-serve.
+  /// Writes a doc to `gdpr_requests` with type='export'; the admin
+  /// Audit panel processes the queue and an admin (or a Cloud Function
+  /// when wired) compiles + emails the export.
+  void _requestDataSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2)))),
+          const Text('Request Your Data',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text(
+              'You can request a copy of all data we hold about you. '
+              'Per GDPR / CCPA we will respond within 30 days. The export '
+              'is sent to your account email.',
+              style: TextStyle(color: Colors.grey, fontSize: 14)),
+          const SizedBox(height: 16),
+          const Text('What\'s included:',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          const SizedBox(height: 6),
+          _bullet('Your profile (name, email, photos, bio)'),
+          _bullet('Your posts, comments, and likes'),
+          _bullet('Your chats and SafeCheck history'),
+          _bullet('Your trip history and group memberships'),
+          _bullet('Audit log of admin actions affecting you (if any)'),
+          const SizedBox(height: 20),
+          SizedBox(width: double.infinity, child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.dark,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              final user = FirebaseAuth.instance.currentUser;
+              if (user == null) {
+                Navigator.pop(ctx);
+                return;
+              }
+              try {
+                await FirebaseFirestore.instance.collection('gdpr_requests').add({
+                  'userId': user.uid,
+                  'userName': user.displayName ?? '',
+                  'userEmail': user.email ?? '',
+                  'requestType': 'export',
+                  'status': 'pending',
+                  'createdAt': FieldValue.serverTimestamp(),
+                  'notes': 'User-initiated via Settings → Request My Data',
+                });
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text(
+                        'Request submitted. We will email you within 30 days.'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 4),
+                  ));
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Could not submit request: $e'),
+                    backgroundColor: Colors.red,
+                  ));
+                }
+              }
+            },
+            child: const Text('Submit Request',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          )),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
   void _blockedUsersSheet(BuildContext context) {
     showModalBottomSheet(context: context, isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
@@ -361,6 +452,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: (confirmCtrl.text.trim() == 'DELETE' && !isDeleting)
                     ? () async {
                         setDialogState(() => isDeleting = true);
+                        // GDPR audit trail: record the deletion request before
+                        // we actually delete (the auth user goes away on next line).
+                        final fbUser = FirebaseAuth.instance.currentUser;
+                        if (fbUser != null) {
+                          try {
+                            await FirebaseFirestore.instance
+                                .collection('gdpr_requests').add({
+                              'userId': fbUser.uid,
+                              'userName': fbUser.displayName ?? '',
+                              'userEmail': fbUser.email ?? '',
+                              'requestType': 'delete',
+                              'status': 'pending',
+                              'createdAt': FieldValue.serverTimestamp(),
+                              'notes': 'User-initiated via Settings → Delete Account',
+                            });
+                          } catch (_) {/* non-fatal */}
+                        }
                         final ok = await context
                             .read<AuthProvider>()
                             .deleteAccount();

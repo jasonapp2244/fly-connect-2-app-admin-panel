@@ -18,6 +18,35 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _loading = false;
   String _role = 'user';
   bool _agreedToTerms = false;
+  DateTime? _dob;
+
+  /// Minimum age to use FlyConnect. We require 18+ because:
+  ///   • Match feature includes dating → liability for minors
+  ///   • Business users (paid accounts) require legal capacity
+  /// COPPA forbids us collecting PII from under-13 regardless,
+  /// so anything under 18 is rejected outright (no grey area).
+  static const int _minAge = 18;
+
+  int _ageInYears(DateTime dob) {
+    final now = DateTime.now();
+    int age = now.year - dob.year;
+    final hadBirthdayThisYear = now.month > dob.month ||
+        (now.month == dob.month && now.day >= dob.day);
+    if (!hadBirthdayThisYear) age -= 1;
+    return age;
+  }
+
+  Future<void> _pickDob() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dob ?? DateTime(now.year - 25, now.month, now.day),
+      firstDate: DateTime(now.year - 100),
+      lastDate: now,
+      helpText: 'Your date of birth',
+    );
+    if (picked != null) setState(() => _dob = picked);
+  }
 
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -124,6 +153,25 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
+    // Age gate — users only. Business accounts have a separate KYC.
+    if (_role == 'user') {
+      if (_dob == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter your date of birth')));
+        return;
+      }
+      final age = _ageInYears(_dob!);
+      if (age < _minAge) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              'You must be at least $_minAge years old to use FlyConnect.'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ));
+        return;
+      }
+    }
+
     // Terms & Privacy must be accepted to create an account
     if (!_agreedToTerms) {
       _showConsentRequired();
@@ -173,6 +221,7 @@ class _SignupScreenState extends State<SignupScreen> {
         city: _cityCtrl.text.trim().isEmpty ? null : _cityCtrl.text.trim(),
         state: _stateCtrl.text.trim().isEmpty ? null : _stateCtrl.text.trim(),
         bio: _bioCtrl.text.trim().isEmpty ? null : _bioCtrl.text.trim(),
+        dob: _dob,
       );
     }
     if (!mounted) return;
@@ -249,6 +298,41 @@ class _SignupScreenState extends State<SignupScreen> {
               suffixIcon: IconButton(
                 icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
                 onPressed: () => setState(() => _obscure = !_obscure))),
+            if (_role == 'user') ...[
+              const SizedBox(height: 14),
+              // Age gate — required for users. 18+ enforced in _nextStep.
+              InkWell(
+                onTap: _pickDob,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.inputBorder),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.cake_outlined, size: 20, color: AppColors.textSecondary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _dob == null
+                            ? 'Date of birth (must be 18+)'
+                            : '${_dob!.year}-${_dob!.month.toString().padLeft(2, '0')}-${_dob!.day.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: _dob == null
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.calendar_today_outlined,
+                        size: 16, color: AppColors.textSecondary),
+                  ]),
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
             // Terms & Privacy consent \u2014 required for signup (App Store 5.1.1 / Play Data Safety)
             InkWell(

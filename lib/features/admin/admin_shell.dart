@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
@@ -27,10 +28,50 @@ const _navItems = <_NavItem>[
   _NavItem(label: 'Notifications', icon: Icons.notifications_outlined, route: '/admin/notifications'),
 ];
 
-class AdminShell extends StatelessWidget {
+class AdminShell extends StatefulWidget {
   final Widget child;
-
   const AdminShell({super.key, required this.child});
+
+  @override
+  State<AdminShell> createState() => _AdminShellState();
+}
+
+class _AdminShellState extends State<AdminShell> {
+  /// Auto-logout an admin after this many minutes of no input.
+  /// Mitigates the "logged-in admin walks away from laptop" risk.
+  static const Duration _idleTimeout = Duration(minutes: 30);
+  Timer? _idleTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _resetIdle();
+  }
+
+  @override
+  void dispose() {
+    _idleTimer?.cancel();
+    super.dispose();
+  }
+
+  void _resetIdle() {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(_idleTimeout, _autoLogout);
+  }
+
+  Future<void> _autoLogout() async {
+    if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    final router = GoRouter.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    await auth.logout();
+    if (!mounted) return;
+    router.go('/login');
+    messenger?.showSnackBar(const SnackBar(
+      content: Text('Signed out after 30 minutes of inactivity.'),
+      backgroundColor: AppColors.warning,
+    ));
+  }
 
   String _pageTitle(String location) {
     for (final item in _navItems) {
@@ -46,7 +87,16 @@ class AdminShell extends StatelessWidget {
     final auth = context.read<AuthProvider>();
 
     return Scaffold(
-      body: Row(
+      // Listener catches mouse/keyboard/touch — any input resets the
+      // idle timer. Cheaper than wrapping in GestureDetector and works
+      // for keyboard nav on web (Flutter web doesn't bubble keys through
+      // GestureDetector reliably).
+      body: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _resetIdle(),
+        onPointerMove: (_) => _resetIdle(),
+        onPointerSignal: (_) => _resetIdle(),
+        child: Row(
         children: [
           // ── Sidebar ──────────────────────────────────
           Container(
@@ -165,6 +215,40 @@ class AdminShell extends StatelessWidget {
                       ),
                       IconButton(
                         onPressed: () async {
+                          // Confirm before signing out — admins lose any
+                          // in-flight investigation work otherwise.
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              title: const Text('Sign out?',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16)),
+                              content: const Text(
+                                  'You will need to sign in again to access the admin console.',
+                                  style: TextStyle(
+                                      color: Color(0xFF8A8D9A), fontSize: 14)),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.error,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                  ),
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Sign Out'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true) return;
+                          if (!context.mounted) return;
                           final ok = await auth.logout();
                           if (!context.mounted) return;
                           if (ok) {
@@ -225,13 +309,14 @@ class AdminShell extends StatelessWidget {
                 Expanded(
                   child: Container(
                     color: const Color(0xFFF7F7F7),
-                    child: child,
+                    child: widget.child,
                   ),
                 ),
               ],
             ),
           ),
         ],
+      ),
       ),
     );
   }

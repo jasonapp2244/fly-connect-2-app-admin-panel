@@ -1,0 +1,76 @@
+rules_version = '2';
+
+// FlyConnect Firebase Storage security rules.
+// Deploy with:  firebase deploy --only storage
+//
+// Bucket layout (matches what the client writes):
+//   profile_photos/{uid}.jpg         - profile avatar
+//   user_uploads/{uid}/posts/{id}.*  - post media
+//   user_uploads/{uid}/stories/{id}.*- story media
+//   business/{uid}/verification/*    - business KYC docs (admin-read only)
+//   safecheck/{uid}/{id}.*           - any SafeCheck attachments
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helpers ------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function isAdmin() {
+      return isSignedIn() &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    function underSize(maxMb) {
+      return request.resource.size < maxMb * 1024 * 1024;
+    }
+
+    // Profile photos ----------------------------------------------------
+    // All signed-in users can read (avatars are public in-app).
+    // Only the owner can write — max 5 MB images.
+    match /profile_photos/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(uid) && isImage() && underSize(5);
+    }
+    match /profile_photos/{uid}/{file=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(uid) && isImage() && underSize(5);
+    }
+
+    // User uploads (posts + stories) ------------------------------------
+    // Path: user_uploads/{uid}/posts/{file}
+    match /user_uploads/{uid}/{folder}/{file=**} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid) && isImage() && underSize(10);
+      allow update, delete: if isOwner(uid) || isAdmin();
+    }
+
+    // Business verification documents -----------------------------------
+    // Owner can upload. Admin can read (for verification queue).
+    // No public read — these contain EIN / licence images.
+    match /business/{uid}/verification/{file=**} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && underSize(20);
+      allow update, delete: if isOwner(uid) || isAdmin();
+    }
+
+    // SafeCheck attachments --------------------------------------------
+    // Admins + the owner can read (for incident review).
+    // Owner-only write.
+    match /safecheck/{uid}/{file=**} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isOwner(uid) && isImage() && underSize(10);
+    }
+
+    // Default deny ------------------------------------------------------
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

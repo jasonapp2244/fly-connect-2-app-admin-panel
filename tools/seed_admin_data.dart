@@ -1,3 +1,5 @@
+/// DEV-ONLY seeder. NOT shipped with production builds.
+///
 /// Seeds Firestore with test data for the new admin pages:
 ///   - reports          (Unified Reports Queue)
 ///   - gdpr_requests    (Privacy/GDPR Center)
@@ -5,7 +7,7 @@
 ///   - promotions       (extra pending ones for Promotions Approval)
 ///
 /// Run:
-///   flutter run -t lib/seed_admin_data.dart -d chrome --web-port 8090
+///   flutter run -t tools/seed_admin_data.dart -d chrome --web-port 8090
 ///
 /// Auto-runs on launch (no button click required). Safe to re-run; each
 /// call adds a fresh batch with timestamped IDs.
@@ -13,7 +15,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'core/config/firebase_config.dart';
+import '../lib/core/config/firebase_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

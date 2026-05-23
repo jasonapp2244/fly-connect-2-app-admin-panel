@@ -151,6 +151,7 @@ class AuthProvider extends ChangeNotifier {
     required String name, required String email, required String password,
     String? phone, String? airline, String? airport, String? position,
     String? city, String? state, String role = 'user', String? bio,
+    DateTime? dob,
   }) async {
     _loading = true; _error = null; notifyListeners();
 
@@ -178,7 +179,17 @@ class AuthProvider extends ChangeNotifier {
         createdAt: DateTime.now(),
         hobbies: [], passportStamps: [], travelHistory: [],
       );
-      await _db.collection('users').doc(user.uid).set(user.toFirestore());
+      // Persist user doc plus DOB / consent metadata for compliance
+      // (Apple 5.1.1, Play Families policy, GDPR Article 8 / COPPA).
+      // DOB is not on UserModel because most code shouldn't need it —
+      // we store it as an extra field for audit + future age verification.
+      final docData = user.toFirestore();
+      if (dob != null) {
+        docData['dob'] = Timestamp.fromDate(dob);
+        docData['ageVerifiedAt'] = FieldValue.serverTimestamp();
+      }
+      docData['termsAcceptedAt'] = FieldValue.serverTimestamp();
+      await _db.collection('users').doc(user.uid).set(docData);
       _currentUser = user;
       _loading = false; notifyListeners();
       return true;

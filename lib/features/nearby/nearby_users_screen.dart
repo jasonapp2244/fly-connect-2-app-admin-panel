@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../core/constants/app_routes.dart';
@@ -147,6 +148,34 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
   }
 
   // ─── FAB ──────────────────────────────────────────────────
+  /// Emergency-number chip in the SafeCheck disclaimer.
+  /// Opens the phone dialer (`tel:` scheme) but does not auto-dial — user
+  /// must still press the call button on their device.
+  Widget _emergencyChip(String label, String tel) {
+    return GestureDetector(
+      onTap: () async {
+        final uri = Uri.parse(tel);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.error,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.call, color: Colors.white, size: 12),
+          const SizedBox(width: 4),
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    );
+  }
+
   Widget _buildFab(SafeCheckProvider safeCheck) {
     final hasActive = safeCheck.myLatestCheckIn != null;
     final activeStatus = safeCheck.myLatestCheckIn?.status;
@@ -304,7 +333,40 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
                   style: TextStyle(color: Colors.grey, fontSize: 13)),
               ])),
             ]),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
+            // ── Emergency disclaimer ──────────────────────────
+            // Legal: SafeCheck is NOT an emergency service. Prevents
+            // users from believing this app will dispatch help.
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+              ),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text(
+                    'Not an emergency service',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.error, fontSize: 13),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'SafeCheck shares status with nearby crew. In a real emergency call your local number.',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(spacing: 8, runSpacing: 4, children: [
+                    _emergencyChip('US 911', 'tel:911'),
+                    _emergencyChip('EU 112', 'tel:112'),
+                    _emergencyChip('UK 999', 'tel:999'),
+                  ]),
+                ])),
+              ]),
+            ),
+            const SizedBox(height: 16),
             // Status options
             ...[
               ('safe', 'Safe', "I'm safe and settled", Icons.check_circle, AppColors.online),

@@ -1,4 +1,6 @@
-/// Run: flutter run -t lib/seed_firestore.dart -d chrome
+/// DEV-ONLY seeder. NOT shipped with production builds.
+///
+/// Run: flutter run -t tools/seed_firestore.dart -d chrome
 /// Seeds Firestore with sample data for development/demo.
 /// Run ONCE, then switch back to lib/main.dart.
 library;
@@ -7,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'core/config/firebase_config.dart';
+import '../lib/core/config/firebase_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

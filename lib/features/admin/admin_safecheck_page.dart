@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/constants/app_colors.dart';
 import 'admin_audit_helper.dart';
 
@@ -98,10 +99,20 @@ class _AdminSafeCheckPageState extends State<AdminSafeCheckPage> {
       _checkIns.where((c) => c['status'] == status).length;
 
   Future<void> _resolveCheckIn(String docId) async {
+    // Forensics: stamp who resolved + when, in addition to expiring the doc.
+    // audit_log captures the action too, but having the data on the
+    // resource itself avoids a join when investigating an incident later.
+    final auth = FirebaseAuth.instance.currentUser;
     await FirebaseFirestore.instance
         .collection('safeChecks')
         .doc(docId)
-        .update({'expiresAt': Timestamp.fromDate(DateTime.now())});
+        .update({
+      'expiresAt': Timestamp.fromDate(DateTime.now()),
+      'resolvedBy': auth?.uid ?? 'unknown',
+      'resolvedByName': auth?.displayName ?? auth?.email ?? 'Unknown Admin',
+      'resolvedAt': FieldValue.serverTimestamp(),
+      'resolution': 'admin_marked_resolved',
+    });
     await logAdminAction(
       action: 'resolve_safecheck',
       targetType: 'safecheck',
