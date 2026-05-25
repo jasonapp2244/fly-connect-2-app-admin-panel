@@ -116,6 +116,7 @@ class TripsScreen extends StatelessWidget {
         trailing: IconButton(
           icon: const Icon(Icons.delete_outline, color: Colors.red),
           onPressed: () async {
+            final messenger = ScaffoldMessenger.of(context);
             final confirmed = await showConfirmDialog(
               context,
               title: 'Delete trip?',
@@ -123,7 +124,16 @@ class TripsScreen extends StatelessWidget {
               confirmLabel: 'Delete',
               isDestructive: true,
             );
-            if (confirmed) provider.deleteTrip(trip.id);
+            if (!confirmed) return;
+            try {
+              await provider.deleteTrip(trip.id);
+            } catch (_) {
+              messenger.showSnackBar(const SnackBar(
+                content: Text('Could not delete trip. Please try again.'),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+              ));
+            }
           }),
       ),
     );
@@ -162,7 +172,7 @@ class TripsScreen extends StatelessWidget {
               onChanged: (v) => setState(() => selectedCountry = v),
             ),
             const SizedBox(height: 20),
-            PrimaryButton(label: 'Save Trip', onTap: () {
+            PrimaryButton(label: 'Save Trip', onTap: () async {
               if (destCtrl.text.isEmpty || selectedCountry == null) {
                 ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
                   content: Text('Please enter a destination and pick a country.'),
@@ -179,15 +189,24 @@ class TripsScreen extends StatelessWidget {
                 ));
                 return;
               }
-              context.read<TripProvider>().addTrip(TripModel(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                userId: uid,
-                destination: destCtrl.text.trim(),
-                countryCode: selectedCountry!,
-                startDate: DateTime.now(),
-                createdAt: DateTime.now(),
-              ));
-              Navigator.pop(ctx);
+              final messenger = ScaffoldMessenger.of(ctx);
+              try {
+                await context.read<TripProvider>().addTrip(TripModel(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  userId: uid,
+                  destination: destCtrl.text.trim(),
+                  countryCode: selectedCountry!,
+                  startDate: DateTime.now(),
+                  createdAt: DateTime.now(),
+                ));
+                if (ctx.mounted) Navigator.pop(ctx);
+              } catch (_) {
+                messenger.showSnackBar(const SnackBar(
+                  content: Text('Could not add trip. Please try again.'),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                ));
+              }
             }),
           ]),
         )));

@@ -75,14 +75,40 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
   Future<void> _loadNearbyUsers() async {
     final auth = context.read<AuthProvider>();
     final myUid = auth.currentUser?.uid;
+
+    // Safety: do NOT show users I have blocked, AND do NOT show users
+    // who have blocked me. Either direction means we shouldn't surface
+    // each other on the map (stalking / harassment mitigation).
+    final blockedByMe = <String>{};
+    final blockedMe = <String>{};
+    if (myUid != null) {
+      try {
+        final mineSnap = await FirebaseFirestore.instance
+            .collection('users').doc(myUid)
+            .collection('blocked').get();
+        blockedByMe.addAll(mineSnap.docs.map((d) => d.id));
+      } catch (_) {/* fail open */}
+      try {
+        final theirsSnap = await FirebaseFirestore.instance
+            .collectionGroup('blocked')
+            .where(FieldPath.documentId, isEqualTo: myUid)
+            .get();
+        blockedMe.addAll(theirsSnap.docs.map((d) =>
+            d.reference.parent.parent?.id ?? '').where((s) => s.isNotEmpty));
+      } catch (_) {/* fail open */}
+    }
+
     final snap = await FirebaseFirestore.instance.collection('users')
         .where('role', isEqualTo: 'user')
-        .limit(10)
+        .limit(20) // fetch extra so blocks don't shrink the list to nothing
         .get();
     final users = <_NearbyUser>[];
     int coordIdx = 0;
     for (final doc in snap.docs) {
-      if (doc.id == myUid) continue; // exclude self
+      if (doc.id == myUid) continue;
+      if (blockedByMe.contains(doc.id)) continue;
+      if (blockedMe.contains(doc.id)) continue;
+      if (users.length >= 10) break;
       final d = doc.data();
       final coord = _nearbyCoords[coordIdx % _nearbyCoords.length];
       users.add(_NearbyUser(
@@ -446,17 +472,24 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
                     userName: user.name,
                     userPhotoUrl: user.photoUrl,
                   );
-                } catch (_) {}
-                if (ctx.mounted) Navigator.pop(ctx);
-                scaffoldMessenger.showSnackBar(SnackBar(
-                    content: Row(children: [
-                      Icon(_statusIcon(status), color: Colors.white, size: 18),
-                      const SizedBox(width: 8),
-                      const Text('SafeCheck shared!'),
-                    ]),
-                    backgroundColor: _statusColor(status),
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  scaffoldMessenger.showSnackBar(SnackBar(
+                      content: Row(children: [
+                        Icon(_statusIcon(status), color: Colors.white, size: 18),
+                        const SizedBox(width: 8),
+                        const Text('SafeCheck shared!'),
+                      ]),
+                      backgroundColor: _statusColor(status),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
+                } catch (_) {
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  scaffoldMessenger.showSnackBar(const SnackBar(
+                    content: Text('Could not submit SafeCheck. Please try again.'),
+                    backgroundColor: Colors.red,
                     behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
+                  ));
+                }
 
               },
               child: Text(selectedStatus != null ? 'Share Status' : 'Select a status',
@@ -555,10 +588,19 @@ class _UserCard extends StatelessWidget {
             onPressed: () async {
               final chatProvider = context.read<ChatProvider>();
               final auth = context.read<AuthProvider>();
+              final messenger = ScaffoldMessenger.of(context);
               if (auth.currentUser == null) return;
-              final chatId = await chatProvider.getOrCreateDm(user.uid);
-              if (context.mounted && chatId.isNotEmpty) {
-                context.push('/conversation/$chatId?name=${Uri.encodeComponent(user.name)}');
+              try {
+                final chatId = await chatProvider.getOrCreateDm(user.uid);
+                if (context.mounted && chatId.isNotEmpty) {
+                  context.push('/conversation/$chatId?name=${Uri.encodeComponent(user.name)}');
+                }
+              } catch (_) {
+                messenger.showSnackBar(const SnackBar(
+                  content: Text('Could not start message. Please try again.'),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                ));
               }
             })),
           const SizedBox(width: 12),

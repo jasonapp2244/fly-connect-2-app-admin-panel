@@ -416,21 +416,46 @@ class _PostCardState extends State<_PostCard> {
 
   Future<void> _toggleSave() async {
     final provider = context.read<PostProvider>();
+    final wasSaved = _saved;
     setState(() => _saved = !_saved);
-    if (_saved) {
-      await provider.savePost(widget.post.id);
-    } else {
-      await provider.unsavePost(widget.post.id);
+    try {
+      if (_saved) {
+        await provider.savePost(widget.post.id);
+      } else {
+        await provider.unsavePost(widget.post.id);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saved = wasSaved);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not save post. Please try again.'),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
     }
   }
 
   Future<void> _toggleLike() async {
     final provider = context.read<PostProvider>();
+    final wasLiked = _liked;
     setState(() { _liked = !_liked; _likeCount += _liked ? 1 : -1; });
-    if (_liked) {
-      await provider.likePost(widget.post.id);
-    } else {
-      await provider.unlikePost(widget.post.id);
+    try {
+      if (_liked) {
+        await provider.likePost(widget.post.id);
+      } else {
+        await provider.unlikePost(widget.post.id);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _liked = wasLiked;
+        _likeCount += _liked ? 1 : -1;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not update like. Please try again.'),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
     }
   }
 

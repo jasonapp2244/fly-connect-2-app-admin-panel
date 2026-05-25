@@ -82,11 +82,20 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   Future<void> _openChat() async {
     if (_user == null) return;
     final chatProvider = context.read<ChatProvider>();
-    final chatId = await chatProvider.getOrCreateDm(_user!.uid);
-    if (mounted) {
-      final encodedName = Uri.encodeComponent(_user!.name);
-      final encodedPhoto = Uri.encodeComponent(_user!.photoUrl ?? '');
-      context.push('/conversation/$chatId?name=$encodedName&photo=$encodedPhoto');
+    try {
+      final chatId = await chatProvider.getOrCreateDm(_user!.uid);
+      if (mounted) {
+        final encodedName = Uri.encodeComponent(_user!.name);
+        final encodedPhoto = Uri.encodeComponent(_user!.photoUrl ?? '');
+        context.push('/conversation/$chatId?name=$encodedName&photo=$encodedPhoto');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not open chat. Please try again.'),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
     }
   }
 

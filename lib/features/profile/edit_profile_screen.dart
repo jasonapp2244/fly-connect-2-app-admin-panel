@@ -67,12 +67,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       'city': _cityCtrl.text.trim(),
       'state': _stateCtrl.text.trim(),
     };
-    await context.read<UserProvider>().updateProfile(uid, updates);
-    setState(() => _saving = false);
-    if (mounted) {
+    try {
+      await context.read<UserProvider>().updateProfile(uid, updates);
+      if (!mounted) return;
+      setState(() => _saving = false);
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile updated!'), backgroundColor: Colors.green));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not save profile. Please try again.'),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
     }
   }
 

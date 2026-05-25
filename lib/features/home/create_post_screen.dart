@@ -37,31 +37,41 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
     final provider = context.read<PostProvider>();
 
-    // Upload image to Firebase Storage if present
-    List<String> mediaUrls = const [];
-    if (_imageBytes != null) {
-      final url = await provider.uploadPostImage(_imageBytes!);
-      if (url != null) {
-        mediaUrls = [url];
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Image upload failed. Posting without image.'),
-          backgroundColor: Colors.red,
-        ));
+    try {
+      // Upload image to Firebase Storage if present
+      List<String> mediaUrls = const [];
+      if (_imageBytes != null) {
+        final url = await provider.uploadPostImage(_imageBytes!);
+        if (url != null) {
+          mediaUrls = [url];
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Image upload failed. Posting without image.'),
+            backgroundColor: Colors.red,
+          ));
+        }
       }
-    }
 
-    await provider.createPost(
-      caption: _captionController.text.trim(),
-      mediaUrls: mediaUrls,
-      mediaType: mediaUrls.isNotEmpty ? 'image' : 'text',
-      location: _locationController.text.trim().isEmpty
-          ? null
-          : _locationController.text.trim(),
-      groupId: _selectedGroupId,
-      audience: _audience,
-    );
-    if (mounted) Navigator.pop(context);
+      await provider.createPost(
+        caption: _captionController.text.trim(),
+        mediaUrls: mediaUrls,
+        mediaType: mediaUrls.isNotEmpty ? 'image' : 'text',
+        location: _locationController.text.trim().isEmpty
+            ? null
+            : _locationController.text.trim(),
+        groupId: _selectedGroupId,
+        audience: _audience,
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not create post. Please try again.'),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   void _showGroupPicker() {

@@ -8,8 +8,10 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:provider/provider.dart';
 import 'core/config/firebase_config.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/version_check_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/app_router.dart';
+import 'features/common/force_update_screen.dart';
 import 'shared/providers/real_providers.dart';
 
 Future<void> main() async {
@@ -99,7 +101,52 @@ class FlyConnectApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         routerConfig: appRouter,
+        builder: (context, child) => _VersionGate(child: child),
       ),
+    );
+  }
+}
+
+/// Runs the Firestore-backed force-update check on first build and
+/// either:
+///   • shows [ForceUpdateScreen] (blocking) when below `minSupportedBuild`,
+///   • shows a one-shot SnackBar (non-blocking) when below `latestBuild`,
+///   • renders the app as normal otherwise.
+///
+/// On any failure (no network, doc missing, etc.) we fail open — never
+/// lock the user out due to a transient backend hiccup.
+class _VersionGate extends StatefulWidget {
+  final Widget? child;
+  const _VersionGate({required this.child});
+
+  @override
+  State<_VersionGate> createState() => _VersionGateState();
+}
+
+class _VersionGateState extends State<_VersionGate> {
+  Future<VersionCheckResult>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = VersionCheckService.instance.check();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<VersionCheckResult>(
+      future: _future,
+      builder: (ctx, snap) {
+        // While the check is in flight, render the router as-is so
+        // splash / login appear immediately. Force-update only takes
+        // effect after the check returns.
+        if (!snap.hasData) return widget.child ?? const SizedBox.shrink();
+        final result = snap.data!;
+        if (result.status == VersionStatus.forceUpdate) {
+          return ForceUpdateScreen(result: result);
+        }
+        return widget.child ?? const SizedBox.shrink();
+      },
     );
   }
 }

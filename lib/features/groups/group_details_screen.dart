@@ -213,6 +213,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> with SingleTick
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
               onPressed: () async {
                 final gp = context.read<GroupProvider>();
+                final messenger = ScaffoldMessenger.of(context);
                 if (isMember) {
                   final confirmed = await showConfirmDialog(
                     context,
@@ -223,9 +224,25 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> with SingleTick
                     isDestructive: true,
                   );
                   if (!confirmed) return;
-                  gp.leaveGroup(g.id);
+                  try {
+                    await gp.leaveGroup(g.id);
+                  } catch (_) {
+                    messenger.showSnackBar(const SnackBar(
+                      content: Text('Could not leave group. Please try again.'),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                    ));
+                  }
                 } else {
-                  gp.joinGroup(g.id);
+                  try {
+                    await gp.joinGroup(g.id);
+                  } catch (_) {
+                    messenger.showSnackBar(const SnackBar(
+                      content: Text('Could not join group. Please try again.'),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                    ));
+                  }
                 }
               },
               child: Text(isMember ? 'Leave Group' : 'Join Group',
