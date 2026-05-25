@@ -16,19 +16,53 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
   String _typeFilter = 'all';
   bool _loading = true;
 
+  // Cursor pagination — Firestore cannot offset, so we keep the last
+  // doc snapshot from each page and use startAfterDocument on the next.
+  static const int _pageSize = 50;
+  DocumentSnapshot? _lastDoc;
+  bool _hasMore = true;
+  bool _loadingMore = false;
+
   @override
   void initState() {
     super.initState();
-    _fetchReports();
+    _fetchFirstPage();
   }
 
-  Future<void> _fetchReports() async {
-    setState(() => _loading = true);
+  /// Sort by severity (high > medium > low) then reportCount descending,
+  /// preserving the existing in-memory ordering for the combined list.
+  void _sortReports() {
+    int sevRank(String s) {
+      switch (s) {
+        case 'high':
+          return 0;
+        case 'medium':
+          return 1;
+        default:
+          return 2;
+      }
+    }
+    _reports.sort((a, b) {
+      final sa = sevRank((a['severity'] ?? 'low') as String);
+      final sb = sevRank((b['severity'] ?? 'low') as String);
+      if (sa != sb) return sa.compareTo(sb);
+      final ra = (a['reportCount'] ?? 0) as num;
+      final rb = (b['reportCount'] ?? 0) as num;
+      return rb.compareTo(ra);
+    });
+  }
+
+  Future<void> _fetchFirstPage() async {
+    setState(() {
+      _loading = true;
+      _lastDoc = null;
+      _hasMore = true;
+    });
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('reports')
           .orderBy('createdAt', descending: true)
-          .limit(100)
+          .limit(_pageSize)
           .get();
       if (!mounted) return;
       setState(() {
@@ -37,6 +71,9 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
           data['id'] = doc.id;
           return data;
         }).toList();
+        _sortReports();
+        _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+        _hasMore = snapshot.docs.length == _pageSize;
       });
     } catch (e) {
       debugPrint('[AdminReports] fetch failed: $e');
@@ -44,6 +81,38 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  Future<void> _fetchMore() async {
+    if (_lastDoc == null || _loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('reports')
+          .orderBy('createdAt', descending: true)
+          .startAfterDocument(_lastDoc!)
+          .limit(_pageSize)
+          .get();
+      if (!mounted) return;
+      final newDocs = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+      setState(() {
+        _reports.addAll(newDocs);
+        _sortReports();
+        _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : _lastDoc;
+        _hasMore = snapshot.docs.length == _pageSize;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('[AdminReports] fetchMore failed: $e');
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  /// Backwards-compat alias for the existing onPressed handlers.
+  Future<void> _fetchReports() => _fetchFirstPage();
 
   List<Map<String, dynamic>> get _filteredReports {
     return _reports.where((r) {
@@ -222,6 +291,49 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _buildReportCard(r),
                 )),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Showing ${filtered.length} of ${_reports.length} loaded',
+                style: const TextStyle(
+                  color: Color(0xFF8A8D9A),
+                  fontSize: 13,
+                ),
+              ),
+              if (_hasMore)
+                SizedBox(
+                  height: 36,
+                  child: ElevatedButton.icon(
+                    onPressed: _loadingMore ? null : _fetchMore,
+                    icon: _loadingMore
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.expand_more, size: 16),
+                    label: Text(_loadingMore ? 'Loading…' : 'Load more',
+                        style: const TextStyle(fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.dark,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                )
+              else if (_reports.isNotEmpty)
+                const Text(
+                  'End of list',
+                  style: TextStyle(color: Color(0xFF8A8D9A), fontSize: 12),
+                ),
+            ],
+          ),
         ],
       ),
     );

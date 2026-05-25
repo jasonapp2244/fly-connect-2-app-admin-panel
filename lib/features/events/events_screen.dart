@@ -131,10 +131,13 @@ class _EventsScreenState extends State<EventsScreen> with SingleTickerProviderSt
               const SizedBox(height: 12),
 
               if (events.isEmpty)
-                const EmptyState(
+                EmptyState(
                   icon: Icons.event_outlined,
                   title: 'No events yet',
-                  subtitle: 'Check back soon for upcoming aviation events.',
+                  subtitle:
+                      'Check back soon, or start one yourself for your crew.',
+                  actionLabel: 'Create Event',
+                  onAction: () => context.push('/create-event'),
                 )
               else
                 ListView.builder(

@@ -13,11 +13,15 @@ import 'core/theme/app_theme.dart';
 import 'core/utils/app_router.dart';
 import 'features/common/force_update_screen.dart';
 import 'shared/providers/real_providers.dart';
+import 'shared/widgets/error_boundary.dart';
 
 Future<void> main() async {
   // Wrap in runZonedGuarded so uncaught async errors also go to Crashlytics.
   await runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    // Install the friendly error fallback as early as possible — before
+    // Firebase init, in case Firebase itself throws during boot.
+    ErrorBoundary.install();
     await Firebase.initializeApp(
       options: FirebaseConfig.currentPlatformOptions,
     );

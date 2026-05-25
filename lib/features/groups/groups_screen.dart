@@ -41,10 +41,25 @@ class GroupsScreen extends StatelessWidget {
   Widget _groupsList(BuildContext context, List<GroupModel> groups, GroupProvider provider, {required bool discover}) {
     if (groups.isEmpty) {
       return EmptyState(
-      icon: Icons.group_outlined,
-      title: discover ? 'No groups yet' : 'No groups joined',
-      subtitle: discover ? 'Be the first to create a group.' : 'Discover and join groups to get started.',
-    );
+        icon: Icons.group_outlined,
+        title: discover ? 'No groups yet' : 'No groups joined',
+        subtitle: discover
+            ? 'Start your own crew community.'
+            : 'Discover groups from your airline or city to join.',
+        actionLabel: discover ? 'Create Group' : 'Discover Groups',
+        onAction: () {
+          if (discover) {
+            context.push(AppRoutes.createGroup);
+          } else {
+            // Switch tab to Discover — both lists live in this widget,
+            // so just nudge the user toward the other tab.
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Tap "Discover" above to find groups to join.'),
+              duration: Duration(seconds: 2),
+            ));
+          }
+        },
+      );
     }
     return ListView.builder(
       padding: const EdgeInsets.all(16),

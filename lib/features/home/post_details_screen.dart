@@ -201,7 +201,22 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
   void _showOptions(BuildContext context) {
     showModalBottomSheet(context: context, builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       ListTile(leading: const Icon(Icons.flag_outlined, color: Colors.red), title: const Text('Report post'),
-        onTap: () { Navigator.pop(context); context.read<PostProvider>().reportPost(widget.post.id); }),
+        onTap: () async {
+          Navigator.pop(context);
+          final messenger = ScaffoldMessenger.of(context);
+          try {
+            await context.read<PostProvider>().reportPost(widget.post.id);
+            messenger.showSnackBar(const SnackBar(
+              content: Text('Post reported. Our team will review it.'),
+              backgroundColor: Colors.red,
+            ));
+          } catch (e) {
+            messenger.showSnackBar(SnackBar(
+              content: Text(e.toString().replaceFirst('Exception: ', '')),
+              backgroundColor: Colors.orange,
+            ));
+          }
+        }),
       ListTile(leading: const Icon(Icons.share_outlined), title: const Text('Share'), onTap: () => Navigator.pop(context)),
       ListTile(leading: const Icon(Icons.link), title: const Text('Copy link'), onTap: () => Navigator.pop(context)),
     ])));

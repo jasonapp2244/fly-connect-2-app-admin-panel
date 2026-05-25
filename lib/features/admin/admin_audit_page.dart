@@ -14,19 +14,30 @@ class _AdminAuditPageState extends State<AdminAuditPage> {
   String _filter = 'all';
   bool _loading = true;
 
+  // Cursor pagination — Firestore cannot offset, so we keep the last
+  // doc snapshot from each page and use startAfterDocument on the next.
+  static const int _pageSize = 50;
+  DocumentSnapshot? _lastDoc;
+  bool _hasMore = true;
+  bool _loadingMore = false;
+
   @override
   void initState() {
     super.initState();
-    _fetchEntries();
+    _fetchFirstPage();
   }
 
-  Future<void> _fetchEntries() async {
-    setState(() => _loading = true);
+  Future<void> _fetchFirstPage() async {
+    setState(() {
+      _loading = true;
+      _lastDoc = null;
+      _hasMore = true;
+    });
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('audit_log')
           .orderBy('timestamp', descending: true)
-          .limit(200)
+          .limit(_pageSize)
           .get();
       if (!mounted) return;
       setState(() {
@@ -35,6 +46,8 @@ class _AdminAuditPageState extends State<AdminAuditPage> {
           data['id'] = doc.id;
           return data;
         }).toList();
+        _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+        _hasMore = snapshot.docs.length == _pageSize;
       });
     } catch (e) {
       debugPrint('[AdminAudit] fetch failed: $e');
@@ -42,6 +55,38 @@ class _AdminAuditPageState extends State<AdminAuditPage> {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  Future<void> _fetchMore() async {
+    if (_lastDoc == null || _loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('audit_log')
+          .orderBy('timestamp', descending: true)
+          .startAfterDocument(_lastDoc!)
+          .limit(_pageSize)
+          .get();
+      if (!mounted) return;
+      final newDocs = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+      setState(() {
+        _entries.addAll(newDocs);
+        _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : _lastDoc;
+        _hasMore = snapshot.docs.length == _pageSize;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('[AdminAudit] fetchMore failed: $e');
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  /// Backwards-compat alias for the existing onPressed handlers.
+  // ignore: unused_element
+  Future<void> _fetchEntries() => _fetchFirstPage();
 
   bool _matchesAction(String action, String filter) {
     switch (filter) {
@@ -184,6 +229,49 @@ class _AdminAuditPageState extends State<AdminAuditPage> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: _buildRow(e),
                 )),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Showing ${filtered.length} of ${_entries.length} loaded',
+                style: const TextStyle(
+                  color: Color(0xFF8A8D9A),
+                  fontSize: 13,
+                ),
+              ),
+              if (_hasMore)
+                SizedBox(
+                  height: 36,
+                  child: ElevatedButton.icon(
+                    onPressed: _loadingMore ? null : _fetchMore,
+                    icon: _loadingMore
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.expand_more, size: 16),
+                    label: Text(_loadingMore ? 'Loading…' : 'Load more',
+                        style: const TextStyle(fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.dark,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                )
+              else if (_entries.isNotEmpty)
+                const Text(
+                  'End of list',
+                  style: TextStyle(color: Color(0xFF8A8D9A), fontSize: 12),
+                ),
+            ],
+          ),
         ],
       ),
     );

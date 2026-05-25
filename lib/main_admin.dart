@@ -28,10 +28,12 @@ import 'core/config/firebase_config.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/admin_router.dart';
 import 'shared/providers/real_providers.dart';
+import 'shared/widgets/error_boundary.dart';
 
 Future<void> main() async {
   await runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    ErrorBoundary.install();
     await Firebase.initializeApp(
       options: FirebaseConfig.currentPlatformOptions,
     );

@@ -9,6 +9,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../core/constants/app_routes.dart';
 import '../../shared/widgets/shared_widgets.dart';
+import '../../shared/widgets/skeleton.dart';
 import '../../shared/providers/post_provider.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../../shared/providers/user_provider.dart';
@@ -26,12 +27,21 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // Distinguishes "feed is still loading" from "feed loaded but empty".
+  // Without this, the home screen flashes "No posts yet" on every cold
+  // start before Firestore returns — which feels broken.
+  bool _initialLoadComplete = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<PostProvider>().listenFeed();
+    });
+    // Fail-safe: after 4s assume the feed has loaded (or failed silently)
+    // so we don't show skeletons forever.
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _initialLoadComplete = true);
     });
   }
 
@@ -68,7 +78,30 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Consumer<PostProvider>(
             builder: (context, provider, _) {
               final posts = provider.feed;
+              // First real data arrived → mark load complete so future
+              // refreshes don't flicker skeletons.
+              if (posts.isNotEmpty && !_initialLoadComplete) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() => _initialLoadComplete = true);
+                });
+              }
               if (posts.isEmpty) {
+                // While we're waiting for the first feed snapshot, show
+                // skeleton cards instead of an empty state — skeletons
+                // tell the user "content is coming" instead of "this is
+                // broken / there's nothing here".
+                if (!_initialLoadComplete) {
+                  return ListView(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    children: const [
+                      FeedPostSkeleton(),
+                      Divider(color: AppColors.backgroundGrey, thickness: 6, height: 6),
+                      FeedPostSkeleton(),
+                      Divider(color: AppColors.backgroundGrey, thickness: 6, height: 6),
+                      FeedPostSkeleton(),
+                    ],
+                  );
+                }
                 return const _EmptyFeed();
               }
               return RefreshIndicator(
@@ -125,10 +158,12 @@ class _FilterChip extends StatelessWidget {
 class _EmptyFeed extends StatelessWidget {
   const _EmptyFeed();
   @override
-  Widget build(BuildContext context) => const EmptyState(
+  Widget build(BuildContext context) => EmptyState(
     icon: Icons.article_outlined,
     title: 'No posts yet',
     subtitle: 'Be the first to share something with your crew!',
+    actionLabel: 'Share a Post',
+    onAction: () => context.push(AppRoutes.createPost),
   );
 }
 
@@ -487,11 +522,22 @@ class _PostCardState extends State<_PostCard> {
           onTap: () { Navigator.pop(context); _copyPostLink(); }),
         ListTile(leading: const Icon(Icons.flag_outlined, color: Colors.red),
           title: const Text('Report post', style: TextStyle(color: Colors.red)),
-          onTap: () {
+          onTap: () async {
             Navigator.pop(context);
-            context.read<PostProvider>().reportPost(widget.post.id);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Post reported'), backgroundColor: Colors.red));
+            final messenger = ScaffoldMessenger.of(context);
+            try {
+              await context.read<PostProvider>().reportPost(widget.post.id);
+              messenger.showSnackBar(const SnackBar(
+                content: Text('Post reported. Our team will review it.'),
+                backgroundColor: Colors.red,
+              ));
+            } catch (e) {
+              // Likely the rate-limit guard — surface to the user
+              messenger.showSnackBar(SnackBar(
+                content: Text(e.toString().replaceFirst('Exception: ', '')),
+                backgroundColor: Colors.orange,
+              ));
+            }
           }),
       ])));
   }
