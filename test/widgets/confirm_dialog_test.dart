@@ -102,8 +102,10 @@ void main() {
         matching: find.byType(ElevatedButton),
       ),
     );
-    final bg = (btn.style?.backgroundColor as WidgetStateColor?)
-        ?.resolve({});
+    // `backgroundColor` can be a `WidgetStatePropertyAll` (single colour)
+    // or a `WidgetStateMapper` (per-state resolver). Resolve via the
+    // `.resolve` contract to stay compatible with both.
+    final bg = btn.style?.backgroundColor?.resolve(<WidgetState>{});
     // Destructive should be red-ish
     expect(bg, isNotNull);
   });
