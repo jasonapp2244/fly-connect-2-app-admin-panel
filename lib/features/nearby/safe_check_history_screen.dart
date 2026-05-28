@@ -23,6 +23,7 @@ class SafeCheckHistoryScreen extends StatelessWidget {
         backgroundColor: Colors.white, elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, size: 20, color: Colors.black),
+          tooltip: 'Back',
           onPressed: () => Navigator.pop(context)),
         title: const Text('SafeCheck History',
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),

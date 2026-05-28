@@ -155,15 +155,35 @@ These are small code changes. List compiled from above:
 
 | File | Change |
 |------|--------|
-| `lib/features/auth/login_screen.dart` | Wrap Google `SocialLoginButton` in `Semantics(label: 'Sign in with Google')` |
-| `lib/features/auth/login_screen.dart` | Wrap Apple `SocialLoginButton` in `Semantics(label: 'Sign in with Apple')` |
-| `lib/features/home/home_screen.dart` | Add `tooltip:` to every `IconButton` that lacks one (share, bookmark, more_horiz) |
-| `lib/features/chat/conversation_screen.dart` | Add `tooltip:` to call + more_vert buttons |
-| `lib/features/groups/group_details_screen.dart` | `tooltip:` on more_vert |
+| `lib/features/auth/login_screen.dart` | Wrap Google `SocialLoginButton` in `Semantics(label: 'Sign in with Google')` ✅ done |
+| `lib/features/auth/login_screen.dart` | Wrap Apple `SocialLoginButton` in `Semantics(label: 'Sign in with Apple')` ✅ done |
+| `lib/features/home/home_screen.dart` | Add `tooltip:` to every `IconButton` that lacks one (share, bookmark, more_horiz) ✅ done |
+| `lib/features/chat/conversation_screen.dart` | Add `tooltip:` to back, more_vert, attach buttons ✅ done |
+| `lib/features/groups/group_details_screen.dart` | `tooltip:` on back, more_vert, chat, remove-member ✅ done |
+| `lib/features/nearby/nearby_users_screen.dart` | `tooltip:` on back, view-toggle, dismiss ✅ done |
+| `lib/features/nearby/safe_check_history_screen.dart` | `tooltip:` on back ✅ done |
+| `lib/features/profile/profile_screen.dart` | `tooltip:` on back, notifications, more_horiz ✅ done |
+| `lib/features/profile/edit_profile_screen.dart` | `tooltip:` on close ✅ done |
+| `lib/features/profile/edit_profile_details_screen.dart` | `tooltip:` on close ✅ done |
 | `lib/features/chat/chat_screen.dart` | "New message" already has tooltip ✅ |
-| Global | Change `AppColors.primary` text on white surfaces to `AppColors.dark` (contrast fix) |
+| Global | Change `AppColors.primary` text on white surfaces to `AppColors.dark` (contrast fix) — pending |
 
-_(These are not tracked in the in-code TODO list yet — add them as a post-audit cleanup pass.)_
+### Audit pass — 2026-05-28
+
+Swept all top-priority screens (login, home, nearby, profile, chat conversation,
+group details, edit profile, SafeCheck history) and added tooltips to every
+unlabelled `IconButton`. Login social buttons wrapped in `Semantics(button: true,
+label: ...)` so TalkBack announces "Sign in with Google / Apple, button" instead
+of just "G, button" / "apple icon, button".
+
+Outstanding (tracked separately):
+- Contrast fix for `AppColors.primary` on white (e.g. chat "Online" indicator,
+  story viewer "View" button) — needs a token-level change, not screen-by-screen.
+- Required-field semantics on auth/signup forms (`Semantics(label: 'Email, required')`).
+- Inline form errors wrapped in `Semantics(liveRegion: true)` so they're announced
+  the moment they appear.
+- Touch target audit with Accessibility Scanner on physical device — needs the
+  APK build that's blocked on the Android keystore.
 
 ---
 

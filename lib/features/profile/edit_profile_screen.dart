@@ -92,7 +92,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white, elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.close, color: Colors.black),
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.black),
+          tooltip: 'Cancel',
           onPressed: () => Navigator.pop(context)),
         title: const Text('Edit Profile', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         actions: [

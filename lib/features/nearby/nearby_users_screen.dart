@@ -131,7 +131,9 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.white, elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, size: 20, color: Colors.black),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, size: 20, color: Colors.black),
+          tooltip: 'Back',
           onPressed: () => GoRouter.of(context).pop()),
         title: const Text('Nearby Users', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         actions: [
@@ -141,6 +143,7 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
             onPressed: () => context.push(AppRoutes.safeCheckHistory)),
           IconButton(
             icon: Icon(_listView ? Icons.map_outlined : Icons.list, color: Colors.black),
+            tooltip: _listView ? 'Show map view' : 'Show list view',
             onPressed: () => setState(() => _listView = !_listView)),
           const TopBarActions(),
         ],
@@ -553,7 +556,11 @@ class _UserCard extends StatelessWidget {
               Text(user.distance, style: AppTextStyles.caption),
             ]),
           ])),
-          IconButton(icon: const Icon(Icons.close, color: Colors.grey), onPressed: onDismiss),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.grey),
+            tooltip: 'Dismiss',
+            onPressed: onDismiss,
+          ),
         ]),
         // SafeCheck status section
         if (checkIn != null) ...[

@@ -174,9 +174,14 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> with SingleTick
             backgroundColor: AppColors.dark,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
+              tooltip: 'Back',
               onPressed: () => GoRouter.of(context).pop()),
             actions: [
-              IconButton(icon: const Icon(Icons.more_vert, color: Colors.white), onPressed: _showGroupMenu),
+              IconButton(
+                icon: const Icon(Icons.more_vert, color: Colors.white),
+                tooltip: 'Group options',
+                onPressed: _showGroupMenu,
+              ),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(fit: StackFit.expand, children: [
@@ -447,12 +452,14 @@ class _MembersTabState extends State<_MembersTab> {
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton(
                 icon: const Icon(Icons.chat_bubble_outline, size: 18, color: AppColors.primary),
+                tooltip: 'Message member',
                 onPressed: () => context.push('/conversation/${uid}_dm?name=Member+${i + 1}'),
                 padding: EdgeInsets.zero, constraints: const BoxConstraints(),
               ),
               const SizedBox(width: 4),
               IconButton(
                 icon: Icon(Icons.remove_circle_outline, size: 18, color: Colors.red.shade300),
+                tooltip: 'Remove member',
                 onPressed: () => _removeMember(uid),
                 padding: EdgeInsets.zero, constraints: const BoxConstraints(),
               ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../core/constants/app_colors.dart';
+import '../../shared/utils/firestore_json.dart';
 import 'admin_audit_helper.dart';
 
 class AdminGdprPage extends StatefulWidget {
@@ -183,7 +184,7 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
 
       // Convert non-JSON-serialisable values (Timestamps, etc.)
       final jsonText = const JsonEncoder.withIndent('  ')
-          .convert(_normaliseForJson(export));
+          .convert(normaliseForJson(export));
 
       // Upload to Storage at gdpr_exports/{userId}/{docId}.json
       final ref = FirebaseStorage.instance.ref(
@@ -224,20 +225,6 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
         backgroundColor: Colors.red,
       ));
     }
-  }
-
-  /// Recursively normalise Firestore-native types (Timestamp, GeoPoint,
-  /// DocumentReference) into JSON-friendly primitives.
-  Object? _normaliseForJson(Object? v) {
-    if (v == null || v is num || v is bool || v is String) return v;
-    if (v is Timestamp) return v.toDate().toIso8601String();
-    if (v is GeoPoint) return {'lat': v.latitude, 'lng': v.longitude};
-    if (v is DocumentReference) return v.path;
-    if (v is List) return v.map(_normaliseForJson).toList();
-    if (v is Map) {
-      return v.map((k, val) => MapEntry(k.toString(), _normaliseForJson(val)));
-    }
-    return v.toString();
   }
 
   Future<void> _reject(String id) async {

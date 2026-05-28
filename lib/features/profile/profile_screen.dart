@@ -180,12 +180,17 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             backgroundColor: AppColors.dark,
             leading: Navigator.canPop(context) ? IconButton(
               icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
+              tooltip: 'Back',
               onPressed: () => GoRouter.of(context).pop(),
             ) : null,
             actions: [
-              if (isMe) IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+              if (isMe) IconButton(
+                icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                tooltip: 'Notifications',
                 onPressed: () => context.push(AppRoutes.notifications)),
-              IconButton(icon: const Icon(Icons.more_horiz, color: Colors.white),
+              IconButton(
+                icon: const Icon(Icons.more_horiz, color: Colors.white),
+                tooltip: 'Profile options',
                 onPressed: () => _showOptions(context, isMe)),
             ],
             flexibleSpace: FlexibleSpaceBar(

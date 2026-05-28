@@ -11,6 +11,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:crypto/crypto.dart';
 import '../utils/image_compress.dart';
+import '../utils/report_rate_limiter.dart';
 import '../models/models.dart';
 import '../mock/mock_data.dart';
 
@@ -764,36 +765,18 @@ class PostProvider extends ChangeNotifier {
     await _db.collection('posts').doc(postId).update({'commentCount': FieldValue.increment(1)});
   }
 
-  // Client-side defence against report-spamming.
-  //
-  // A user can submit at most N reports per rolling window. The check
-  // is in-memory only — it resets on app restart — but it stops the
-  // casual abuser from one-tap-spamming the abuse queue. The real
-  // server-side limit must come from Firestore rules / Cloud Functions
-  // once we have them.
-  static const int _maxReportsPerWindow = 5;
-  static const Duration _reportWindow = Duration(hours: 1);
-  final List<DateTime> _recentReportTimes = [];
-
-  /// Returns true if the user is allowed to submit another report
-  /// right now; otherwise the caller should show an error and skip.
-  bool _checkAndConsumeReportSlot() {
-    final now = DateTime.now();
-    _recentReportTimes
-        .removeWhere((t) => now.difference(t) > _reportWindow);
-    if (_recentReportTimes.length >= _maxReportsPerWindow) return false;
-    _recentReportTimes.add(now);
-    return true;
-  }
+  // Client-side defence against report-spamming. See
+  // lib/shared/utils/report_rate_limiter.dart for the policy.
+  final ReportRateLimiter _reportLimiter = ReportRateLimiter();
 
   /// Thrown when the user submits reports too fast. UI catches this and
   /// shows a friendly "please wait" SnackBar.
   static const String reportRateLimitError =
-      'You have submitted several reports recently. Please wait an hour before reporting again.';
+      ReportRateLimiter.tooFastMessage;
 
   Future<void> reportPost(String postId, {String? reason}) async {
     if (isMock) return;
-    if (!_checkAndConsumeReportSlot()) {
+    if (!_reportLimiter.tryConsume()) {
       throw Exception(reportRateLimitError);
     }
     // 1. Flag the post itself so it surfaces in the moderation queue
@@ -818,7 +801,7 @@ class PostProvider extends ChangeNotifier {
     String? reason,
   }) async {
     if (isMock) return;
-    if (!_checkAndConsumeReportSlot()) {
+    if (!_reportLimiter.tryConsume()) {
       throw Exception(reportRateLimitError);
     }
     await _db.collection('reports').add({

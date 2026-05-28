@@ -614,7 +614,11 @@ class _PostCardState extends State<_PostCard> {
               child: Text(p.authorName, style: AppTextStyles.labelMedium)),
             Text(timeago.format(p.createdAt), style: AppTextStyles.caption),
           ])),
-          IconButton(icon: const Icon(Icons.more_horiz, color: AppColors.textSecondary), onPressed: _showOptions),
+          IconButton(
+            icon: const Icon(Icons.more_horiz, color: AppColors.textSecondary),
+            tooltip: 'More options',
+            onPressed: _showOptions,
+          ),
         ])),
       // Image / gradient fallback
       GestureDetector(
@@ -671,6 +675,7 @@ class _PostCardState extends State<_PostCard> {
         const Spacer(),
         IconButton(
           icon: const Icon(Icons.share_outlined, size: 22, color: AppColors.textPrimary),
+          tooltip: 'Share post',
           onPressed: _copyPostLink,
         ),
         IconButton(
@@ -679,6 +684,7 @@ class _PostCardState extends State<_PostCard> {
             size: 22,
             color: _saved ? AppColors.primary : AppColors.textPrimary,
           ),
+          tooltip: _saved ? 'Remove from saved' : 'Save post',
           onPressed: _toggleSave,
         ),
       ])),

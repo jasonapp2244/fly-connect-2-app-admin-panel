@@ -180,7 +180,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white, elevation: 0.5,
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: () => GoRouter.of(context).pop()),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          tooltip: 'Back',
+          onPressed: () => GoRouter.of(context).pop(),
+        ),
         title: Row(children: [
           CircleAvatar(radius: 18,
             backgroundImage: widget.otherPhotoUrl != null ? NetworkImage(widget.otherPhotoUrl!) : null,
@@ -202,6 +206,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.more_vert, color: Colors.black),
+            tooltip: 'Conversation options',
             onPressed: _showConversationMenu,
           ),
         ],
@@ -262,7 +267,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
           decoration: BoxDecoration(color: Colors.white,
             border: Border(top: BorderSide(color: Colors.grey.shade200))),
           child: Row(children: [
-            IconButton(icon: const Icon(Icons.add_circle_outline), color: Colors.grey, onPressed: _pickImage),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              color: Colors.grey,
+              tooltip: 'Attach image',
+              onPressed: _pickImage,
+            ),
             Expanded(child: TextField(
               controller: _ctrl,
               onChanged: (v) => context.read<ChatProvider>().setTyping(widget.chatId, v.isNotEmpty),

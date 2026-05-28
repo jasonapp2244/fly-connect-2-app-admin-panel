@@ -145,15 +145,31 @@ class _LoginScreenState extends State<LoginScreen> {
 
           // Social buttons
           Row(children: [
-            Expanded(child: SocialLoginButton(
-              icon: const Text('G', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF4285F4))),
-              onTap: _loading ? null : _loginWithGoogle,
-            )),
+            Expanded(
+              child: Semantics(
+                button: true,
+                label: 'Sign in with Google',
+                child: SocialLoginButton(
+                  icon: const Text('G',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Color(0xFF4285F4))),
+                  onTap: _loading ? null : _loginWithGoogle,
+                ),
+              ),
+            ),
             const SizedBox(width: 12),
-            Expanded(child: SocialLoginButton(
-              icon: const Icon(Icons.apple, size: 20),
-              onTap: _loading ? null : _loginWithApple,
-            )),
+            Expanded(
+              child: Semantics(
+                button: true,
+                label: 'Sign in with Apple',
+                child: SocialLoginButton(
+                  icon: const Icon(Icons.apple, size: 20),
+                  onTap: _loading ? null : _loginWithApple,
+                ),
+              ),
+            ),
           ]),
           const SizedBox(height: 32),
 

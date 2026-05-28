@@ -52,7 +52,11 @@ class _EditProfileDetailsScreenState extends State<EditProfileDetailsScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white, elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.close, color: Colors.black), onPressed: () => Navigator.pop(context)),
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.black),
+          tooltip: 'Cancel',
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text('Profile Details', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         actions: [
           TextButton(onPressed: _saving ? null : _save,
