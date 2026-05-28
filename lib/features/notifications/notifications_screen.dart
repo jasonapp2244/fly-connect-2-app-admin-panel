@@ -5,9 +5,29 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../shared/providers/providers.dart';
+import '../../shared/widgets/skeleton.dart';
+import '../../shared/widgets/shared_widgets.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
+
+  @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  // Distinguishes "notifications still loading" from "loaded but empty",
+  // so the empty state doesn't flash on cold start before the first
+  // snapshot returns.
+  bool _initialLoadComplete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _initialLoadComplete = true);
+    });
+  }
 
   IconData _iconForType(String type) {
     switch (type) {
@@ -47,15 +67,20 @@ class NotificationsScreen extends StatelessWidget {
       body: Consumer<NotificationProvider>(
         builder: (ctx, provider, _) {
           final notifications = provider.notifications;
+          if (notifications.isNotEmpty && !_initialLoadComplete) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _initialLoadComplete = true);
+            });
+          }
           if (notifications.isEmpty) {
-            return Center(child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.notifications_none, size: 72, color: AppColors.dark.withValues(alpha: 0.2)),
-              const SizedBox(height: 16),
-              Text('No notifications yet', style: TextStyle(color: AppColors.dark.withValues(alpha: 0.5))),
-            ],
-          ));
+            if (!_initialLoadComplete) {
+              return const _NotificationsSkeleton();
+            }
+            return const EmptyState(
+              icon: Icons.notifications_off_outlined,
+              title: 'All caught up!',
+              subtitle: "When someone likes, comments, or messages you, you'll see it here.",
+            );
           }
           return ListView.builder(
             itemCount: notifications.length,
@@ -99,6 +124,34 @@ class NotificationsScreen extends StatelessWidget {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _NotificationsSkeleton extends StatelessWidget {
+  const _NotificationsSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      itemCount: 5,
+      itemBuilder: (_, __) => const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Skeleton.circle(size: 40),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Skeleton(width: 160, height: 12),
+                SizedBox(height: 8),
+                Skeleton(width: 80, height: 10),
+              ],
+            ),
+          ),
+        ]),
       ),
     );
   }

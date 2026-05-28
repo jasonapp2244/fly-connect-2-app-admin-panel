@@ -8,6 +8,8 @@ import '../../core/constants/app_routes.dart';
 import '../../shared/providers/chat_provider.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../../shared/models/models.dart';
+import '../../shared/widgets/skeleton.dart';
+import '../../shared/widgets/shared_widgets.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -16,15 +18,33 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateMixin {
   late TabController _tabs;
+  // Distinguishes "chat list is still loading" from "list loaded but empty",
+  // mirroring the pattern used in home_screen. Without this, the screen
+  // flashes the empty state on every cold start before the first snapshot
+  // returns — which feels broken.
+  bool _initialLoadComplete = false;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
+    // Fail-safe: after 4s assume the chat list has loaded (or failed
+    // silently) so we don't show skeletons forever.
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _initialLoadComplete = true);
+    });
   }
 
   @override
   void dispose() { _tabs.dispose(); super.dispose(); }
+
+  void _markLoaded() {
+    if (!_initialLoadComplete) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _initialLoadComplete = true);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,13 +73,26 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       ),
       body: TabBarView(
         controller: _tabs,
-        children: [_DmList(), _GroupList()],
+        children: [
+          _DmList(
+            initialLoadComplete: _initialLoadComplete,
+            onLoaded: _markLoaded,
+          ),
+          _GroupList(
+            initialLoadComplete: _initialLoadComplete,
+            onLoaded: _markLoaded,
+          ),
+        ],
       ),
     );
   }
 }
 
 class _DmList extends StatelessWidget {
+  final bool initialLoadComplete;
+  final VoidCallback onLoaded;
+  const _DmList({required this.initialLoadComplete, required this.onLoaded});
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ChatProvider>(
@@ -67,11 +100,19 @@ class _DmList extends StatelessWidget {
         final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
         final dms = provider.chats.where((c) => c.type == 'dm').toList();
 
+        if (dms.isNotEmpty) onLoaded();
+
         if (dms.isEmpty) {
-          return const _EmptyState(
-          icon: Icons.chat_bubble_outline,
-          message: 'No messages yet',
-          sub: 'Find someone to connect with!');
+          if (!initialLoadComplete) {
+            return const _ChatListSkeleton();
+          }
+          return EmptyState(
+            icon: Icons.chat_bubble_outline,
+            title: 'No conversations yet',
+            subtitle: 'Connect with crew nearby or via Match to start chatting.',
+            actionLabel: 'Find People',
+            onAction: () => context.push('/nearby'),
+          );
         }
 
         return ListView.separated(
@@ -85,6 +126,10 @@ class _DmList extends StatelessWidget {
 }
 
 class _GroupList extends StatelessWidget {
+  final bool initialLoadComplete;
+  final VoidCallback onLoaded;
+  const _GroupList({required this.initialLoadComplete, required this.onLoaded});
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ChatProvider>(
@@ -92,11 +137,19 @@ class _GroupList extends StatelessWidget {
         final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
         final groups = provider.chats.where((c) => c.type == 'group').toList();
 
+        if (groups.isNotEmpty) onLoaded();
+
         if (groups.isEmpty) {
-          return const _EmptyState(
-          icon: Icons.group_outlined,
-          message: 'No group chats',
-          sub: 'Join a group to start chatting!');
+          if (!initialLoadComplete) {
+            return const _ChatListSkeleton();
+          }
+          return EmptyState(
+            icon: Icons.group_outlined,
+            title: 'No group chats yet',
+            subtitle: 'Join a crew group to start chatting together.',
+            actionLabel: 'Discover Groups',
+            onAction: () => context.push('/groups-list'),
+          );
         }
 
         return ListView.separated(
@@ -105,6 +158,37 @@ class _GroupList extends StatelessWidget {
           itemBuilder: (context, i) => _ChatTile(chat: groups[i], currentUid: uid),
         );
       },
+    );
+  }
+}
+
+class _ChatListSkeleton extends StatelessWidget {
+  const _ChatListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      itemCount: 6,
+      separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.backgroundGrey, indent: 76),
+      itemBuilder: (_, __) => const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(children: [
+          Skeleton.circle(size: 48),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Skeleton(width: 140, height: 14),
+                SizedBox(height: 8),
+                Skeleton(width: 200, height: 10),
+              ],
+            ),
+          ),
+          SizedBox(width: 12),
+          Skeleton(width: 60, height: 10),
+        ]),
+      ),
     );
   }
 }
@@ -160,7 +244,7 @@ class _ChatTile extends StatelessWidget {
   String _otherName(ChatModel chat, String uid) {
     // Prefer a name embedded on the chat doc (set when the DM was created);
     // fall back to the group name or a generic "User". We no longer look
-    // up against mockUsers \u2014 the chat doc should carry the participant name.
+    // up against mockUsers — the chat doc should carry the participant name.
     final names = (chat as dynamic).participantNames;
     if (names is Map) {
       final otherUid = chat.participants.firstWhere((p) => p != uid, orElse: () => '');
@@ -169,18 +253,4 @@ class _ChatTile extends StatelessWidget {
     }
     return chat.groupName ?? 'User';
   }
-}
-
-class _EmptyState extends StatelessWidget {
-  final IconData icon; final String message, sub;
-  const _EmptyState({required this.icon, required this.message, required this.sub});
-  @override
-  Widget build(BuildContext context) => Center(child: Column(
-    mainAxisAlignment: MainAxisAlignment.center, children: [
-    Icon(icon, size: 64, color: Colors.grey.shade300),
-    const SizedBox(height: 16),
-    Text(message, style: AppTextStyles.h4),
-    const SizedBox(height: 8),
-    Text(sub, style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
-  ]));
 }

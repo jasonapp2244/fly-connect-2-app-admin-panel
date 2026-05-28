@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../models/models.dart';
+import '../utils/image_compress.dart';
 
 class UserRepository {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -39,9 +40,15 @@ class UserRepository {
   }
 
   // ── Upload profile photo (web-compatible using bytes) ─────
+  // Compresses to max 1024 px on the longest edge — avatars are rarely
+  // rendered larger than 200 px in-app, so 1024 covers every surface
+  // (settings header, profile detail) while being ~10× smaller than a
+  // raw phone-camera capture.
   Future<String> uploadProfilePhoto(Uint8List bytes) async {
-    final ref = _storage.ref('profile_photos/$currentUid.jpg');
-    await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+    final compressed = await compressForUpload(bytes, maxDimension: 1024);
+    final ref = _storage.ref('profile_photos/$currentUid.png');
+    await ref.putData(compressed,
+        SettableMetadata(contentType: 'image/png'));
     final url = await ref.getDownloadURL();
     await _db.collection('users').doc(currentUid).update({'photoUrl': url});
     return url;

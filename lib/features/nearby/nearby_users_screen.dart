@@ -11,6 +11,7 @@ import '../../core/constants/app_routes.dart';
 import '../../shared/widgets/shared_widgets.dart';
 import '../../shared/models/models.dart';
 import '../../shared/providers/real_providers.dart';
+import '../../shared/utils/open_chat.dart';
 
 // ─── Status helpers ──────────────────────────────────────────
 Color _statusColor(String? status) => switch (status) {
@@ -586,22 +587,13 @@ class _UserCard extends StatelessWidget {
             style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
             onPressed: () async {
-              final chatProvider = context.read<ChatProvider>();
               final auth = context.read<AuthProvider>();
-              final messenger = ScaffoldMessenger.of(context);
               if (auth.currentUser == null) return;
-              try {
-                final chatId = await chatProvider.getOrCreateDm(user.uid);
-                if (context.mounted && chatId.isNotEmpty) {
-                  context.push('/conversation/$chatId?name=${Uri.encodeComponent(user.name)}');
-                }
-              } catch (_) {
-                messenger.showSnackBar(const SnackBar(
-                  content: Text('Could not start message. Please try again.'),
-                  backgroundColor: Colors.red,
-                  behavior: SnackBarBehavior.floating,
-                ));
-              }
+              await OpenChat.withUser(
+                context,
+                otherUid: user.uid,
+                otherName: user.name,
+              );
             })),
           const SizedBox(width: 12),
           Expanded(child: ElevatedButton.icon(

@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../../core/constants/app_colors.dart';
 import 'admin_audit_helper.dart';
 
@@ -95,6 +97,147 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
       details: 'Completed GDPR request $id',
     );
     _fetchRequests();
+  }
+
+  /// Compile the user's data into a single JSON file, upload to Storage,
+  /// and attach the download URL to the gdpr_requests doc so the admin
+  /// can email it. This is the actual "right to access" delivery — until
+  /// now the admin was only flipping a status flag.
+  ///
+  /// Runs client-side from the admin browser; for large user accounts
+  /// this should eventually move to a Cloud Function (background job
+  /// with auth + a 9-minute timeout). Acceptable for MVP.
+  Future<void> _compileExport(Map<String, dynamic> req) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final docId = (req['docId'] ?? req['id']) as String? ?? '';
+    if (docId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Request has no id — cannot compile.'),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
+    final userId = (req['userId'] as String?) ?? '';
+    if (userId.isEmpty) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Request has no userId — cannot compile.'),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Compiling user data export…'),
+      duration: Duration(seconds: 2),
+    ));
+    try {
+      final db = FirebaseFirestore.instance;
+      final export = <String, dynamic>{
+        'exportGeneratedAt': DateTime.now().toIso8601String(),
+        'userId': userId,
+      };
+
+      // 1. Top-level user doc
+      final userDoc = await db.collection('users').doc(userId).get();
+      export['user'] = userDoc.data();
+
+      // 2. Subcollections under the user doc
+      for (final sub in ['following', 'followers', 'blocked', 'trips']) {
+        final snap = await db.collection('users').doc(userId)
+            .collection(sub).get();
+        export[sub] = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      }
+
+      // 3. Posts authored by this user
+      final postsSnap = await db.collection('posts')
+          .where('authorId', isEqualTo: userId).limit(500).get();
+      export['posts'] = postsSnap.docs
+          .map((d) => {'id': d.id, ...d.data()}).toList();
+
+      // 4. SafeCheck history
+      final scSnap = await db.collection('safeChecks')
+          .where('userId', isEqualTo: userId).limit(500).get();
+      export['safeChecks'] = scSnap.docs
+          .map((d) => {'id': d.id, ...d.data()}).toList();
+
+      // 5. Matches involving this user
+      final matchSnapA = await db.collection('matches')
+          .where('userA', isEqualTo: userId).limit(500).get();
+      final matchSnapB = await db.collection('matches')
+          .where('userB', isEqualTo: userId).limit(500).get();
+      export['matches'] = [
+        ...matchSnapA.docs.map((d) => {'id': d.id, ...d.data()}),
+        ...matchSnapB.docs.map((d) => {'id': d.id, ...d.data()}),
+      ];
+
+      // 6. Reports filed BY this user (so they can see what they reported)
+      final reportsSnap = await db.collection('reports')
+          .where('reporterId', isEqualTo: userId).limit(500).get();
+      export['reportsFiled'] = reportsSnap.docs
+          .map((d) => {'id': d.id, ...d.data()}).toList();
+
+      // 7. Audit actions affecting this user
+      final auditSnap = await db.collection('audit_log')
+          .where('targetId', isEqualTo: userId).limit(500).get();
+      export['auditEntriesAboutMe'] = auditSnap.docs
+          .map((d) => {'id': d.id, ...d.data()}).toList();
+
+      // Convert non-JSON-serialisable values (Timestamps, etc.)
+      final jsonText = const JsonEncoder.withIndent('  ')
+          .convert(_normaliseForJson(export));
+
+      // Upload to Storage at gdpr_exports/{userId}/{docId}.json
+      final ref = FirebaseStorage.instance.ref(
+          'gdpr_exports/$userId/$docId.json');
+      await ref.putString(
+        jsonText,
+        format: PutStringFormat.raw,
+        metadata: SettableMetadata(
+            contentType: 'application/json',
+            customMetadata: {'gdprRequestId': docId}),
+      );
+      final url = await ref.getDownloadURL();
+
+      // Mark the request completed AND save the download URL on the doc
+      await db.collection('gdpr_requests').doc(docId).update({
+        'status': 'completed',
+        'completedAt': FieldValue.serverTimestamp(),
+        'exportUrl': url,
+        'exportSizeBytes': jsonText.length,
+      });
+      await logAdminAction(
+        action: 'complete_gdpr',
+        targetType: 'gdpr_request',
+        targetId: docId,
+        details:
+            'Compiled + uploaded export for user $userId (${jsonText.length} bytes)',
+      );
+      if (mounted) {
+        messenger.showSnackBar(const SnackBar(
+          content: Text('Export compiled. URL saved on the request.'),
+          backgroundColor: Colors.green,
+        ));
+      }
+      _fetchRequests();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Export failed: $e'),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
+
+  /// Recursively normalise Firestore-native types (Timestamp, GeoPoint,
+  /// DocumentReference) into JSON-friendly primitives.
+  Object? _normaliseForJson(Object? v) {
+    if (v == null || v is num || v is bool || v is String) return v;
+    if (v is Timestamp) return v.toDate().toIso8601String();
+    if (v is GeoPoint) return {'lat': v.latitude, 'lng': v.longitude};
+    if (v is DocumentReference) return v.path;
+    if (v is List) return v.map(_normaliseForJson).toList();
+    if (v is Map) {
+      return v.map((k, val) => MapEntry(k.toString(), _normaliseForJson(val)));
+    }
+    return v.toString();
   }
 
   Future<void> _reject(String id) async {
@@ -410,11 +553,67 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
                         child: Text(r['notes'] as String,
                             style: const TextStyle(fontSize: 13)),
                       ),
+                    if (r['exportUrl'] != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.online.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: AppColors.online.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(children: [
+                          const Icon(Icons.check_circle_outline,
+                              color: AppColors.online, size: 16),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Export ready · ${((r['exportSizeBytes'] as int? ?? 0) / 1024).toStringAsFixed(1)} KB',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.online),
+                            ),
+                          ),
+                          SelectableText(
+                            r['exportUrl'] as String,
+                            maxLines: 1,
+                            style: const TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary,
+                                fontFamily: 'monospace'),
+                          ),
+                        ]),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
+                        // Compile + upload the user's data — only shown for
+                        // 'export' requests that haven't been compiled yet.
+                        if (r['requestType'] == 'export' &&
+                            r['exportUrl'] == null)
+                          SizedBox(
+                            width: 140,
+                            height: 32,
+                            child: ElevatedButton(
+                              onPressed: () => _compileExport(r),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.dark,
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.zero,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                                textStyle: const TextStyle(
+                                    fontSize: 11, fontWeight: FontWeight.w600),
+                              ),
+                              child: const Text('Compile Export'),
+                            ),
+                          ),
                         SizedBox(
                           width: 140,
                           height: 32,

@@ -109,13 +109,65 @@ class _HomeScreenState extends State<HomeScreen> {
                 onRefresh: () async => provider.listenFeed(),
                 child: ListView.separated(
                   padding: const EdgeInsets.only(bottom: 24),
-                  itemCount: posts.length + 2,  // +1 stories, +1 promos strip
+                  // posts + stories + promos + footer
+                  itemCount: posts.length + 3,
                   separatorBuilder: (_, i) => i == 0 || i == 1
                       ? const Divider(color: AppColors.backgroundGrey, thickness: 6, height: 6)
                       : const SizedBox(height: 8),
                   itemBuilder: (context, i) {
                     if (i == 0) return _StoriesRow();
                     if (i == 1) return const _PromoStrip();
+                    if (i == posts.length + 2) {
+                      // Footer: load-more or end-of-feed indicator
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 24, horizontal: 16),
+                        child: Center(
+                          child: provider.feedHasMore
+                              ? SizedBox(
+                                  height: 36,
+                                  child: ElevatedButton.icon(
+                                    onPressed: provider.feedLoadingMore
+                                        ? null
+                                        : () => provider.loadMoreFeed(),
+                                    icon: provider.feedLoadingMore
+                                        ? const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child:
+                                                CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: Colors.white),
+                                          )
+                                        : const Icon(Icons.expand_more,
+                                            size: 16),
+                                    label: Text(
+                                        provider.feedLoadingMore
+                                            ? 'Loading…'
+                                            : 'Load more',
+                                        style:
+                                            const TextStyle(fontSize: 12)),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.dark,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(20)),
+                                    ),
+                                  ),
+                                )
+                              : const Text(
+                                  "You're all caught up.",
+                                  style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12),
+                                ),
+                        ),
+                      );
+                    }
                     return _PostCard(post: posts[i - 2], index: i - 2);
                   },
                 ),

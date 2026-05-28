@@ -55,12 +55,18 @@
 		<string>FlyConnect uses your camera so you can take photos for posts, profile pictures, and stories.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
 		<string>FlyConnect needs access to your photo library so you can choose photos for posts, profile pictures, and stories.</string>
-		<key>NSPhotoLibraryAddUsageDescription</key>
-		<string>FlyConnect can save photos from the app to your photo library when you choose to download them.</string>
-		<key>NSMicrophoneUsageDescription</key>
-		<string>FlyConnect uses the microphone when you record video clips for posts.</string>
-		<key>NSContactsUsageDescription</key>
-		<string>FlyConnect can check which of your contacts are already on FlyConnect so you can connect with your crew more easily. This is optional.</string>
+		<!--
+		Audit 2026-05: removed the following keys because the underlying
+		features are not yet wired in the app. Declaring unused
+		permissions is misleading to App Store reviewers and to the
+		App Privacy nutrition label. Re-add (with the original
+		descriptions in git history) when the feature ships.
+		  • NSPhotoLibraryAddUsageDescription (saving to library)
+		  • NSMicrophoneUsageDescription      (video recording)
+		  • NSContactsUsageDescription        (contact matching)
+		-->
+		<key>NSUserTrackingUsageDescription</key>
+		<string>FlyConnect uses anonymous analytics to improve the app. We do not share your activity with other companies or apps.</string>
 		<!-- ==================== URL Schemes ==================== -->
 		<key>CFBundleURLTypes</key>
 		<array>

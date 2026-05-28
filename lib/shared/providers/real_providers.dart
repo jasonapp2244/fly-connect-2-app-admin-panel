@@ -10,6 +10,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:crypto/crypto.dart';
+import '../utils/image_compress.dart';
 import '../models/models.dart';
 import '../mock/mock_data.dart';
 
@@ -134,6 +135,23 @@ class AuthProvider extends ChangeNotifier {
     try {
       final cred = await _auth.signInWithEmailAndPassword(email: email, password: password);
       await _fetchUser(cred.user!.uid);
+      // SOC 2 / audit posture: every admin sign-in lands in the audit
+      // log so reviewers can spot credential stuffing or off-hours
+      // access. Regular-user sign-ins are skipped to keep the log
+      // signal high.
+      if (_currentUser?.role == 'admin') {
+        try {
+          await _db.collection('audit_log').add({
+            'adminId': cred.user!.uid,
+            'adminName': _currentUser?.name ?? email,
+            'action': 'admin_signin',
+            'targetType': 'session',
+            'targetId': cred.user!.uid,
+            'details': 'Admin signed in via email/password',
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+        } catch (_) {/* silent: best-effort */}
+      }
       _loading = false; notifyListeners();
       return true;
     } on FirebaseAuthException catch (e) {
@@ -598,17 +616,51 @@ class PostProvider extends ChangeNotifier {
     if (isMock) return;
   }
 
+  // Feed pagination via "growing window" — each loadMore press bumps
+  // the limit and re-subscribes. The active page is always streamed
+  // (real-time updates to existing posts) and older pages keep flowing
+  // through the same stream. Simpler than splitting hot vs cold pages
+  // and good enough until we hit ~500 posts loaded.
+  static const int _feedPageSize = 25;
+  int _feedLimit = _feedPageSize;
+  bool _feedHasMore = true;
+  bool _feedLoadingMore = false;
+
+  bool get feedHasMore => _feedHasMore;
+  bool get feedLoadingMore => _feedLoadingMore;
+
   void listenFeed() {
     if (isMock) { _feed = List.from(mockPosts); notifyListeners(); return; }
     _feedSub?.cancel();
+    _feedLimit = _feedPageSize;
+    _feedHasMore = true;
+    _resubscribeFeed();
+  }
+
+  void _resubscribeFeed() {
+    _feedSub?.cancel();
     _feedSub = _db.collection('posts')
         .orderBy('createdAt', descending: true)
-        .limit(50)
+        .limit(_feedLimit)
         .snapshots()
         .listen((snap) {
       _feed = snap.docs.map((d) => PostModel.fromFirestore(d)).toList();
+      // If we got fewer than the limit, there's nothing more to fetch.
+      _feedHasMore = _feed.length >= _feedLimit;
+      _feedLoadingMore = false;
       notifyListeners();
     });
+  }
+
+  /// Grow the feed window by one page. Safe to call multiple times.
+  Future<void> loadMoreFeed() async {
+    if (isMock) return;
+    if (_feedLoadingMore || !_feedHasMore) return;
+    _feedLoadingMore = true;
+    notifyListeners();
+    _feedLimit += _feedPageSize;
+    _resubscribeFeed();
+    // _feedLoadingMore flips back to false in the snapshot callback above.
   }
 
   Future<void> likePost(String postId) async {
@@ -810,11 +862,15 @@ class PostProvider extends ChangeNotifier {
     if (isMock) return null;
     if (_uid == null) return null;
     try {
+      // Resize down to a sensible max edge (1600px) before upload —
+      // phone-camera JPEGs are 5–10 MB and we never display larger
+      // than a feed card anyway.
+      final compressed = await compressForUpload(bytes);
       final ts = DateTime.now().millisecondsSinceEpoch;
       final ref = FirebaseStorage.instance
-          .ref('user_uploads/$_uid/posts/$ts.jpg');
-      await ref.putData(bytes,
-          SettableMetadata(contentType: 'image/jpeg'));
+          .ref('user_uploads/$_uid/posts/$ts.png');
+      await ref.putData(compressed,
+          SettableMetadata(contentType: 'image/png'));
       return await ref.getDownloadURL();
     } catch (_) {
       return null;

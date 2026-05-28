@@ -233,6 +233,11 @@ final user = context.watch<AuthProvider>().currentUser;
                         controller: _captionController,
                         minLines: 3,
                         maxLines: 6,
+                        // Caps post bodies at 2,000 chars. Firestore docs are
+                        // limited to ~1 MB but our model docs include lots of
+                        // metadata, so we leave headroom. UI counter shows
+                        // remaining characters.
+                        maxLength: 2000,
                         style: const TextStyle(fontSize: 15, color: Colors.black87),
                         decoration: const InputDecoration(
                           hintText: "What's on your mind?",

@@ -7,6 +7,7 @@ import '../../core/constants/app_routes.dart';
 import '../../shared/widgets/shared_widgets.dart';
 import '../../shared/providers/match_provider.dart';
 import '../../shared/providers/chat_provider.dart';
+import '../../shared/utils/open_chat.dart';
 import '../../shared/models/models.dart';
 import '../home/main_shell.dart' show AppDrawer;
 
@@ -124,11 +125,12 @@ class _MatchScreenState extends State<MatchScreen> with SingleTickerProviderStat
                   child: SlideTransition(position: _slideAnim,
                     child: _MatchBanner(user: user,
                       onMessage: () async {
-                        final chatId = await context.read<ChatProvider>()
-                            .getOrCreateDm(user.uid);
-                        if (context.mounted) {
-                          context.push('/conversation/$chatId?name=${user.name}');
-                        }
+                        await OpenChat.withUser(
+                          context,
+                          otherUid: user.uid,
+                          otherName: user.name,
+                          otherPhotoUrl: user.photoUrl,
+                        );
                       }))),
             ]);
           },

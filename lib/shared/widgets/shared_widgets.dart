@@ -61,6 +61,10 @@ class AppTextField extends StatelessWidget {
   final Widget? prefixIcon;
   final TextInputType? keyboardType;
   final int? maxLines;
+  /// Hard character cap. Defaults to null (uncapped) so the existing
+  /// usages stay backward-compatible. Setting this also surfaces the
+  /// "n / max" counter under the field.
+  final int? maxLength;
 
   const AppTextField({
     super.key,
@@ -71,6 +75,7 @@ class AppTextField extends StatelessWidget {
     this.prefixIcon,
     this.keyboardType,
     this.maxLines = 1,
+    this.maxLength,
   });
 
   @override
@@ -80,6 +85,7 @@ class AppTextField extends StatelessWidget {
       obscureText: obscureText,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      maxLength: maxLength,
       style: AppTextStyles.bodyMedium,
       decoration: InputDecoration(
         hintText: hint,

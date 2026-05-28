@@ -6,13 +6,24 @@ import '../../shared/providers/trip_provider.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../../shared/models/models.dart';
 import '../../shared/widgets/shared_widgets.dart';
+import '../../shared/widgets/skeleton.dart';
 import '../../shared/widgets/confirm_dialog.dart';
 
-class TripsScreen extends StatelessWidget {
+class TripsScreen extends StatefulWidget {
   /// Optional: if non-null and different from the current user's uid,
   /// the screen shows a read-only view of that user's passport.
   final String? userId;
   const TripsScreen({super.key, this.userId});
+
+  @override
+  State<TripsScreen> createState() => _TripsScreenState();
+}
+
+class _TripsScreenState extends State<TripsScreen> {
+  // Distinguishes "trips still loading" from "loaded but empty",
+  // so the empty state doesn't flash on cold start before the first
+  // snapshot returns.
+  bool _initialLoadComplete = false;
 
   static const List<Map<String, String>> _countries = [
     {'code': 'US', 'name': 'United States', 'flag': '🇺🇸'},
@@ -26,6 +37,14 @@ class TripsScreen extends StatelessWidget {
     {'code': 'ES', 'name': 'Spain', 'flag': '🇪🇸'},
     {'code': 'TH', 'name': 'Thailand', 'flag': '🇹🇭'},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _initialLoadComplete = true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +61,15 @@ class TripsScreen extends StatelessWidget {
       body: Consumer<TripProvider>(
         builder: (context, provider, _) {
           final trips = provider.trips;
-          if (trips.isEmpty) return _emptyState(context);
+          if (trips.isNotEmpty && !_initialLoadComplete) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _initialLoadComplete = true);
+            });
+          }
+          if (trips.isEmpty) {
+            if (!_initialLoadComplete) return const _TripsSkeleton();
+            return _emptyState(context);
+          }
           return CustomScrollView(slivers: [
             SliverToBoxAdapter(child: _passportSection(trips)),
             SliverPadding(
@@ -139,17 +166,13 @@ class TripsScreen extends StatelessWidget {
     );
   }
 
-  Widget _emptyState(BuildContext context) => Center(child: Column(
-    mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Text('✈️', style: TextStyle(fontSize: 64)),
-      const SizedBox(height: 16),
-      const Text('No trips yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 8),
-      const Text('Add your first trip to start your digital passport',
-        textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-      const SizedBox(height: 24),
-      PrimaryButton(label: 'Add Trip', width: 160, onTap: () => _showAddTrip(context)),
-    ]));
+  Widget _emptyState(BuildContext context) => EmptyState(
+        icon: Icons.flight_takeoff_outlined,
+        title: 'No trips yet',
+        subtitle: 'Log your layovers and travel — your passport stamps will appear here.',
+        actionLabel: 'Add Trip',
+        onAction: () => _showAddTrip(context),
+      );
 
   void _showAddTrip(BuildContext context) {
     String? selectedCountry;
@@ -210,5 +233,41 @@ class TripsScreen extends StatelessWidget {
             }),
           ]),
         )));
+  }
+}
+
+class _TripsSkeleton extends StatelessWidget {
+  const _TripsSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 4,
+      itemBuilder: (_, __) => Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade200),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Row(children: [
+          Skeleton(width: 50, height: 50, radius: 12),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Skeleton(width: 140, height: 14),
+                SizedBox(height: 8),
+                Skeleton(width: 100, height: 10),
+                SizedBox(height: 6),
+                Skeleton(width: 80, height: 10),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 }

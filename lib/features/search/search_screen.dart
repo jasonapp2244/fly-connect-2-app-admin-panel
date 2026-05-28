@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
@@ -15,6 +16,12 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   final TextEditingController _ctrl = TextEditingController();
   late TabController _tabs;
 
+  // Search is debounced to stop each keystroke from firing its own
+  // Firestore query. At 5M users the un-debounced version would mean
+  // ~7 reads per word typed, every keystroke billed.
+  Timer? _debounce;
+  static const Duration _debounceDuration = Duration(milliseconds: 350);
+
   @override
   void initState() {
     super.initState();
@@ -23,11 +30,22 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _ctrl.dispose(); _tabs.dispose(); super.dispose();
   }
 
   void _search(String q) {
-    context.read<SearchProvider>().search(q);
+    _debounce?.cancel();
+    final trimmed = q.trim();
+    // Run the clear synchronously so the UI feels instant on empty.
+    if (trimmed.isEmpty) {
+      context.read<SearchProvider>().clear();
+      return;
+    }
+    _debounce = Timer(_debounceDuration, () {
+      if (!mounted) return;
+      context.read<SearchProvider>().search(trimmed);
+    });
   }
 
   @override

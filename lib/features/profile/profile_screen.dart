@@ -9,6 +9,7 @@ import '../../shared/providers/auth_provider.dart';
 import '../../shared/providers/user_provider.dart';
 import '../../shared/providers/post_provider.dart';
 import '../../shared/providers/chat_provider.dart';
+import '../../shared/utils/open_chat.dart';
 import '../../shared/models/models.dart';
 import '../../shared/mock/story_state.dart';
 import '../home/story_viewer_screen.dart';
@@ -27,6 +28,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   UserModel? _user;
   bool _loading = true;
   bool _following = false;
+  // If either party has blocked the other, hide the whole profile.
+  // Mirrors the Nearby map's both-direction block filter.
+  bool _blockedRelationship = false;
 
   @override
   void initState() {
@@ -47,9 +51,35 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       _user = await userProvider.fetchUser(widget.userId!);
       if (_user != null && auth.currentUser != null) {
         _following = await userProvider.isFollowing(_user!.uid);
+        _blockedRelationship = await _checkBlockedRelationship(
+            myUid: auth.currentUser!.uid, otherUid: _user!.uid);
       }
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Returns true if EITHER party has blocked the other.
+  /// We don't surface the other user's profile in that case.
+  Future<bool> _checkBlockedRelationship({
+    required String myUid,
+    required String otherUid,
+  }) async {
+    try {
+      final db = FirebaseFirestore.instance;
+      // 1. I blocked them?
+      final mineSnap = await db
+          .collection('users').doc(myUid)
+          .collection('blocked').doc(otherUid)
+          .get();
+      if (mineSnap.exists) return true;
+      // 2. They blocked me?
+      final theirsSnap = await db
+          .collection('users').doc(otherUid)
+          .collection('blocked').doc(myUid)
+          .get();
+      if (theirsSnap.exists) return true;
+    } catch (_) {/* fail open — better to show than to incorrectly hide */}
+    return false;
   }
 
   @override
@@ -81,22 +111,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   Future<void> _openChat() async {
     if (_user == null) return;
-    final chatProvider = context.read<ChatProvider>();
-    try {
-      final chatId = await chatProvider.getOrCreateDm(_user!.uid);
-      if (mounted) {
-        final encodedName = Uri.encodeComponent(_user!.name);
-        final encodedPhoto = Uri.encodeComponent(_user!.photoUrl ?? '');
-        context.push('/conversation/$chatId?name=$encodedName&photo=$encodedPhoto');
-      }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not open chat. Please try again.'),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-      ));
-    }
+    await OpenChat.withUser(
+      context,
+      otherUid: _user!.uid,
+      otherName: _user!.name,
+      otherPhotoUrl: _user!.photoUrl,
+    );
   }
 
   @override
@@ -105,6 +125,46 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     if (_user == null) {
       return Scaffold(appBar: AppBar(leading: const BackButton(), backgroundColor: Colors.white),
       body: const Center(child: Text('User not found')));
+    }
+    if (_blockedRelationship) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: const BackButton(color: Colors.black),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.block,
+                      size: 28, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                const Text('Profile unavailable',
+                    style: TextStyle(
+                        fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                const Text(
+                  'You cannot view this profile.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     final u = _user!;

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:uuid/uuid.dart';
 import '../models/models.dart';
+import '../utils/image_compress.dart';
 
 // ─── Post Repository ─────────────────────────────────────────
 class PostRepository {
@@ -35,9 +36,11 @@ class PostRepository {
   }
 
   Future<String?> uploadPostMedia(Uint8List bytes, String type) async {
+    final compressed = await compressForUpload(bytes);
     final id = const Uuid().v4();
-    final ref = _storage.ref('posts/$_uid/$id.$type');
-    await ref.putData(bytes, SettableMetadata(contentType: 'image/$type'));
+    final ref = _storage.ref('posts/$_uid/$id.png');
+    await ref.putData(compressed,
+        SettableMetadata(contentType: 'image/png'));
     return ref.getDownloadURL();
   }
 
