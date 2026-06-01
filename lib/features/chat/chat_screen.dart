@@ -10,6 +10,7 @@ import '../../shared/providers/auth_provider.dart';
 import '../../shared/models/models.dart';
 import '../../shared/widgets/skeleton.dart';
 import '../../shared/widgets/shared_widgets.dart';
+import '../../shared/widgets/inline_error_banner.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -66,7 +67,8 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
           controller: _tabs,
           labelColor: AppColors.dark,
           unselectedLabelColor: Colors.grey,
-          indicatorColor: AppColors.primary,
+          // Tab indicator on a white AppBar — primary fails 3:1, dark passes.
+          indicatorColor: AppColors.dark,
           indicatorWeight: 3,
           tabs: const [Tab(text: 'Direct'), Tab(text: 'Groups')],
         ),
@@ -99,8 +101,19 @@ class _DmList extends StatelessWidget {
       builder: (context, provider, _) {
         final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
         final dms = provider.chats.where((c) => c.type == 'dm').toList();
+        final err = provider.chatsError;
 
         if (dms.isNotEmpty) onLoaded();
+
+        if (err != null && dms.isEmpty) {
+          return Column(children: [
+            InlineErrorBanner(
+              message: err,
+              onRetry: provider.retryChats,
+            ),
+            const Expanded(child: SizedBox.shrink()),
+          ]);
+        }
 
         if (dms.isEmpty) {
           if (!initialLoadComplete) {
@@ -232,10 +245,14 @@ class _ChatTile extends StatelessWidget {
           Text(timeago.format(chat.lastMessageAt!), style: AppTextStyles.caption),
         const SizedBox(height: 4),
         if (unread > 0)
+          // WCAG 1.4.11: an unread badge is a UI component conveying state,
+          // so it needs 3:1 against the white tile background. Primary on
+          // white is 1.7:1 (fail). AppColors.badge is the standard red
+          // (5.5:1) used by iOS / Android system unread indicators.
           Container(width: 20, height: 20,
-            decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+            decoration: const BoxDecoration(color: AppColors.badge, shape: BoxShape.circle),
             child: Center(child: Text(unread > 9 ? '9+' : '$unread',
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.dark)))),
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white)))),
       ]),
       onTap: () => context.push('/conversation/${chat.id}?name=${Uri.encodeComponent(name)}&group=$isGroup'),
     );

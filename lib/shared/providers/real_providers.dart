@@ -597,10 +597,15 @@ class PostProvider extends ChangeNotifier {
   final Set<String> _liked = {};
   final Set<String> _saved = {};
   bool _loading = false;
+  String? _feedError;
   AuthProvider? _storedAuth;
 
   bool get loading => _loading;
   List<PostModel> get feed => _feed;
+
+  /// Non-null when the feed stream has reported a failure. Cleared on
+  /// every successful re-subscribe via [listenFeed].
+  String? get feedError => _feedError;
 
   String? get _uid => isMock ? (_storedAuth?.currentUser?.uid ?? 'user_001') : _auth.currentUser?.uid;
   StreamSubscription? _feedSub;
@@ -635,6 +640,10 @@ class PostProvider extends ChangeNotifier {
     _feedSub?.cancel();
     _feedLimit = _feedPageSize;
     _feedHasMore = true;
+    // Clear any prior error so the InlineErrorBanner disappears once the
+    // user taps Retry; if the new subscription also fails, onError below
+    // will set it again.
+    _feedError = null;
     _resubscribeFeed();
   }
 
@@ -648,6 +657,14 @@ class PostProvider extends ChangeNotifier {
       _feed = snap.docs.map((d) => PostModel.fromFirestore(d)).toList();
       // If we got fewer than the limit, there's nothing more to fetch.
       _feedHasMore = _feed.length >= _feedLimit;
+      _feedLoadingMore = false;
+      // Successful snapshot clears any prior error.
+      if (_feedError != null) _feedError = null;
+      notifyListeners();
+    }, onError: (Object err) {
+      // Surface the failure to the UI via [feedError]. We keep whatever
+      // posts were already in [_feed] so the screen doesn't blank out.
+      _feedError = 'Could not load the feed.';
       _feedLoadingMore = false;
       notifyListeners();
     });
@@ -906,8 +923,14 @@ class ChatProvider extends ChangeNotifier {
   List<ChatModel> _chats = [];
   StreamSubscription? _chatsSub;
   AuthProvider? _storedAuth;
+  String? _chatsError;
 
   List<ChatModel> get chats => _chats;
+
+  /// Non-null when the chat-list stream has reported a failure.
+  /// Cleared on a successful snapshot or an explicit retry.
+  String? get chatsError => _chatsError;
+
   String? get _uid => isMock ? (_storedAuth?.currentUser?.uid ?? 'user_001') : _auth.currentUser?.uid;
 
   ChatProvider({this.isMock = false}) {
@@ -917,17 +940,29 @@ class ChatProvider extends ChangeNotifier {
   void updateAuth(AuthProvider auth) {
     _storedAuth = auth;
     if (isMock) return;
+    _subscribeChats();
+  }
+
+  /// Re-subscribe to the chat-list stream. Exposed so the UI can wire it
+  /// to an InlineErrorBanner Retry button.
+  void retryChats() => _subscribeChats();
+
+  void _subscribeChats() {
     _chatsSub?.cancel();
-    if (_uid != null) {
-      _chatsSub = _db.collection('chats')
-          .where('participants', arrayContains: _uid)
-          .orderBy('lastMessageAt', descending: true)
-          .snapshots()
-          .listen((snap) {
-        _chats = snap.docs.map((d) => ChatModel.fromFirestore(d)).toList();
-        notifyListeners();
-      });
-    }
+    if (_uid == null) return;
+    _chatsError = null;
+    _chatsSub = _db.collection('chats')
+        .where('participants', arrayContains: _uid)
+        .orderBy('lastMessageAt', descending: true)
+        .snapshots()
+        .listen((snap) {
+      _chats = snap.docs.map((d) => ChatModel.fromFirestore(d)).toList();
+      if (_chatsError != null) _chatsError = null;
+      notifyListeners();
+    }, onError: (Object err) {
+      _chatsError = 'Could not load conversations.';
+      notifyListeners();
+    });
   }
 
   Stream<List<MessageModel>> watchMessages(String chatId) {

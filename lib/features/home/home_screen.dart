@@ -10,6 +10,7 @@ import '../../core/constants/app_text_styles.dart';
 import '../../core/constants/app_routes.dart';
 import '../../shared/widgets/shared_widgets.dart';
 import '../../shared/widgets/skeleton.dart';
+import '../../shared/widgets/inline_error_banner.dart';
 import '../../shared/providers/post_provider.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../../shared/providers/user_provider.dart';
@@ -78,12 +79,26 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Consumer<PostProvider>(
             builder: (context, provider, _) {
               final posts = provider.feed;
+              final feedError = provider.feedError;
               // First real data arrived → mark load complete so future
               // refreshes don't flicker skeletons.
               if (posts.isNotEmpty && !_initialLoadComplete) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted) setState(() => _initialLoadComplete = true);
                 });
+              }
+              // Stream error + no cached posts → take over the screen with
+              // the banner above the empty area. With cached posts present,
+              // the banner sits above them so the user keeps reading what
+              // we have while we retry.
+              if (feedError != null && posts.isEmpty) {
+                return Column(children: [
+                  InlineErrorBanner(
+                    message: feedError,
+                    onRetry: provider.listenFeed,
+                  ),
+                  const Expanded(child: SizedBox.shrink()),
+                ]);
               }
               if (posts.isEmpty) {
                 // While we're waiting for the first feed snapshot, show
@@ -282,11 +297,13 @@ class _StoriesRowState extends State<_StoriesRow> {
                     ),
                   ),
                   if (!hasStory)
+                    // "Add story" affordance — UI control, needs 3:1 vs the
+                    // grey/white surrounding background. Flip to dark.
                     Positioned(bottom: 0, right: 0,
                       child: Container(width: 20, height: 20,
-                        decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle,
+                        decoration: BoxDecoration(color: AppColors.dark, shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.5)),
-                        child: const Icon(Icons.add, size: 12, color: AppColors.dark))),
+                        child: const Icon(Icons.add, size: 12, color: AppColors.primary))),
                 ]),
                 const SizedBox(height: 4),
                 const Text('Your Story', style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis),

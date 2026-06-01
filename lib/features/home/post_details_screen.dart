@@ -188,10 +188,12 @@ class _PostDetailsScreenState extends State<PostDetailsScreen> {
               ),
             )),
             const SizedBox(width: 8),
+            // Send button on a white comment-bar → flip to dark for 3:1
+            // contrast (UI component carrying action).
             GestureDetector(onTap: _comment,
               child: Container(width: 42, height: 42,
-                decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                child: const Icon(Icons.send_rounded, color: AppColors.dark, size: 20))),
+                decoration: const BoxDecoration(color: AppColors.dark, shape: BoxShape.circle),
+                child: const Icon(Icons.send_rounded, color: AppColors.primary, size: 20))),
           ]),
         ),
       ]),

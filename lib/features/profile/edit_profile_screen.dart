@@ -119,10 +119,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: _pickedImage == null && user?.photoUrl == null
                   ? Text(user?.name.isNotEmpty == true ? user!.name[0] : '?',
                       style: const TextStyle(fontSize: 40, color: AppColors.textSecondary)) : null),
+              // Camera FAB on the avatar — flip to dark so the button has
+              // 3:1 contrast against the white surrounding background
+              // (WCAG 1.4.11 non-text contrast for UI components).
               Positioned(bottom: 0, right: 0,
                 child: Container(width: 32, height: 32,
-                  decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                  child: const Icon(Icons.camera_alt, size: 16, color: AppColors.dark))),
+                  decoration: const BoxDecoration(color: AppColors.dark, shape: BoxShape.circle),
+                  child: const Icon(Icons.camera_alt, size: 16, color: AppColors.primary))),
             ]))),
           const SizedBox(height: 28),
           _label('Full Name'),

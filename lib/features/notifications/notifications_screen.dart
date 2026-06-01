@@ -116,8 +116,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         Text(timeago.format(n.createdAt),
                           style: TextStyle(color: AppColors.dark.withValues(alpha: 0.4), fontSize: 11)),
                       ])),
+                      // Unread dot carries state — needs 3:1 vs the white
+                      // tile. Primary fails (1.7:1); badge red is 5.5:1 and
+                      // matches platform unread conventions.
                       if (!n.isRead) Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 4),
-                        decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle)),
+                        decoration: const BoxDecoration(color: AppColors.badge, shape: BoxShape.circle)),
                     ]),
                   ),
                 ),
