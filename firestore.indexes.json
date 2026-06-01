@@ -63,6 +63,15 @@
         { "fieldPath": "status",    "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "comment": "Used by ChatProvider.openOrCreateDm — look up an existing DM with a specific user. Equality on `type` plus arrayContains on `participants` forces a composite (arrayContains + any other where = composite required).",
+      "collectionGroup": "chats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type",         "order": "ASCENDING" },
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" }
+      ]
     }
   ],
   "fieldOverrides": []
