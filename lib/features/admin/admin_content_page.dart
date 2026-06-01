@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
 import 'admin_audit_helper.dart';
+import 'admin_filter_logic.dart';
+import 'cursor_paginator.dart';
 
 class AdminContentPage extends StatefulWidget {
   const AdminContentPage({super.key});
@@ -14,7 +16,19 @@ class _AdminContentPageState extends State<AdminContentPage> {
   List<Map<String, dynamic>> _reports = [];
   String _filter = 'all';
   bool _loading = true;
+  bool _loadingMore = false;
   String? _loadError;
+
+  final _paginator = CursorPaginator(pageSize: 30);
+
+  // Composite index posts(isReported, reportCount DESC) is declared in
+  // firestore.indexes.json — see firestore_indexes_lint_test.dart. We
+  // can therefore orderBy server-side instead of sorting in memory,
+  // which also unlocks cursor pagination.
+  Query<Map<String, dynamic>> get _baseQuery => FirebaseFirestore.instance
+      .collection('posts')
+      .where('isReported', isEqualTo: true)
+      .orderBy('reportCount', descending: true);
 
   @override
   void initState() {
@@ -23,23 +37,17 @@ class _AdminContentPageState extends State<AdminContentPage> {
   }
 
   Future<void> _fetchReports() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _loadError = null; });
+    _paginator.reset();
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('posts')
-          .where('isReported', isEqualTo: true)
-          .limit(50)
-          .get();
-      final reports = snapshot.docs.map((doc) {
-        final data = doc.data();
-        data['docId'] = doc.id;
-        return data;
-      }).toList();
-      // Sort in memory to avoid composite index requirement
-      reports.sort((a, b) =>
-          (b['reportCount'] ?? 0).compareTo(a['reportCount'] ?? 0));
+      final snapshot = await _paginator.fetchFirst(_baseQuery);
+      if (!mounted) return;
       setState(() {
-        _reports = reports;
+        _reports = snapshot.docs.map((doc) {
+          final data = doc.data();
+          data['docId'] = doc.id;
+          return data;
+        }).toList();
         _loading = false;
       });
     } catch (e, st) {
@@ -48,39 +56,36 @@ class _AdminContentPageState extends State<AdminContentPage> {
     }
   }
 
-  List<Map<String, dynamic>> get _filteredReports {
-    switch (_filter) {
-      case 'high':
-        return _reports.where((r) => (r['reportCount'] ?? 0) > 5).toList();
-      case 'medium':
-        return _reports
-            .where((r) =>
-                (r['reportCount'] ?? 0) > 2 && (r['reportCount'] ?? 0) <= 5)
-            .toList();
-      case 'low':
-        return _reports.where((r) => (r['reportCount'] ?? 0) <= 2).toList();
-      default:
-        return _reports;
+  Future<void> _fetchMore() async {
+    if (_loadingMore || !_paginator.hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final snap = await _paginator.fetchNext(_baseQuery);
+      if (!mounted || snap == null) return;
+      setState(() {
+        _reports.addAll(snap.docs.map((doc) {
+          final data = doc.data();
+          data['docId'] = doc.id;
+          return data;
+        }));
+      });
+    } catch (e) {
+      debugPrint('[AdminContent] fetchMore failed: $e');
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
-  int get _pendingCount => _reports.length;
-  int get _highCount => _reports.where((r) => (r['reportCount'] ?? 0) > 5).length;
-  int get _mediumCount =>
-      _reports.where((r) =>
-          (r['reportCount'] ?? 0) > 2 && (r['reportCount'] ?? 0) <= 5).length;
+  List<Map<String, dynamic>> get _filteredReports =>
+      applyReportFilter(_reports, _filter);
 
-  String _severityLabel(int reportCount) {
-    if (reportCount > 5) return 'High';
-    if (reportCount > 2) return 'Medium';
-    return 'Low';
-  }
+  ReportSeverityCounts get _counts => ReportSeverityCounts.from(_reports);
 
-  Color _severityColor(int reportCount) {
-    if (reportCount > 5) return const Color(0xFFFF3B30);
-    if (reportCount > 2) return const Color(0xFFFF9500);
-    return const Color(0xFF8A8D9A);
-  }
+  String _severityLabel(int reportCount) =>
+      severityLabel(severityFor(reportCount));
+
+  Color _severityColor(int reportCount) =>
+      severityColor(severityFor(reportCount));
 
   Future<bool> _showConfirm(
     BuildContext context, {
@@ -235,6 +240,52 @@ class _AdminContentPageState extends State<AdminContentPage> {
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _buildReportCard(report),
                           )),
+                    if (_reports.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Showing ${filtered.length} of ${_reports.length} loaded',
+                            style: const TextStyle(
+                                color: Color(0xFF8A8D9A), fontSize: 13),
+                          ),
+                          if (_paginator.hasMore)
+                            SizedBox(
+                              height: 36,
+                              child: ElevatedButton.icon(
+                                onPressed:
+                                    _loadingMore ? null : _fetchMore,
+                                icon: _loadingMore
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white))
+                                    : const Icon(Icons.expand_more, size: 16),
+                                label: Text(
+                                    _loadingMore ? 'Loading…' : 'Load more',
+                                    style: const TextStyle(fontSize: 12)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.dark,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8)),
+                                ),
+                              ),
+                            )
+                          else
+                            const Text('End of list',
+                                style: TextStyle(
+                                    color: Color(0xFF8A8D9A),
+                                    fontSize: 12)),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -246,22 +297,22 @@ class _AdminContentPageState extends State<AdminContentPage> {
     final stats = [
       {
         'label': 'Pending Review',
-        'count': _pendingCount,
+        'count': _counts.total,
         'color': const Color(0xFFFF9500),
       },
       {
         'label': 'High Severity',
-        'count': _highCount,
+        'count': _counts.high,
         'color': const Color(0xFFFF3B30),
       },
       {
         'label': 'Medium Severity',
-        'count': _mediumCount,
+        'count': _counts.medium,
         'color': const Color(0xFFFF9500),
       },
       {
         'label': 'Low Severity',
-        'count': _pendingCount - _highCount - _mediumCount,
+        'count': _counts.low,
         'color': const Color(0xFF8A8D9A),
       },
     ];

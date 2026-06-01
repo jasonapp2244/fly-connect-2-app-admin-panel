@@ -5,6 +5,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../../core/constants/app_colors.dart';
 import '../../shared/utils/firestore_json.dart';
 import 'admin_audit_helper.dart';
+import 'admin_gdpr_logic.dart';
+import 'cursor_paginator.dart';
 
 class AdminGdprPage extends StatefulWidget {
   const AdminGdprPage({super.key});
@@ -17,6 +19,13 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
   List<Map<String, dynamic>> _requests = [];
   String _filter = 'all';
   bool _loading = true;
+  bool _loadingMore = false;
+
+  final _paginator = CursorPaginator(pageSize: 50);
+
+  Query<Map<String, dynamic>> get _baseQuery => FirebaseFirestore.instance
+      .collection('gdpr_requests')
+      .orderBy('createdAt', descending: true);
 
   @override
   void initState() {
@@ -25,13 +34,10 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
   }
 
   Future<void> _fetchRequests() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; });
+    _paginator.reset();
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('gdpr_requests')
-          .orderBy('createdAt', descending: true)
-          .limit(100)
-          .get();
+      final snapshot = await _paginator.fetchFirst(_baseQuery);
       if (!mounted) return;
       setState(() {
         _requests = snapshot.docs.map((doc) {
@@ -47,27 +53,30 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
     }
   }
 
-  List<Map<String, dynamic>> get _filteredRequests {
-    switch (_filter) {
-      case 'export':
-        return _requests.where((r) => r['requestType'] == 'export').toList();
-      case 'delete':
-        return _requests.where((r) => r['requestType'] == 'delete').toList();
-      case 'pending':
-        return _requests.where((r) => r['status'] == 'pending').toList();
-      case 'completed':
-        return _requests.where((r) => r['status'] == 'completed').toList();
-      default:
-        return _requests;
+  Future<void> _fetchMore() async {
+    if (_loadingMore || !_paginator.hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final snap = await _paginator.fetchNext(_baseQuery);
+      if (!mounted || snap == null) return;
+      setState(() {
+        _requests.addAll(snap.docs.map((doc) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          return data;
+        }));
+      });
+    } catch (e) {
+      debugPrint('[AdminGdpr] fetchMore failed: $e');
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
-  int get _pendingCount =>
-      _requests.where((r) => r['status'] == 'pending').length;
-  int get _processingCount =>
-      _requests.where((r) => r['status'] == 'processing').length;
-  int get _completedCount =>
-      _requests.where((r) => r['status'] == 'completed').length;
+  List<Map<String, dynamic>> get _filteredRequests =>
+      applyGdprFilter(_requests, parseGdprFilter(_filter));
+
+  GdprStatusCounts get _counts => GdprStatusCounts.from(_requests);
 
   Future<void> _process(String id) async {
     await FirebaseFirestore.instance
@@ -132,56 +141,9 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
     ));
     try {
       final db = FirebaseFirestore.instance;
-      final export = <String, dynamic>{
-        'exportGeneratedAt': DateTime.now().toIso8601String(),
-        'userId': userId,
-      };
-
-      // 1. Top-level user doc
-      final userDoc = await db.collection('users').doc(userId).get();
-      export['user'] = userDoc.data();
-
-      // 2. Subcollections under the user doc
-      for (final sub in ['following', 'followers', 'blocked', 'trips']) {
-        final snap = await db.collection('users').doc(userId)
-            .collection(sub).get();
-        export[sub] = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
-      }
-
-      // 3. Posts authored by this user
-      final postsSnap = await db.collection('posts')
-          .where('authorId', isEqualTo: userId).limit(500).get();
-      export['posts'] = postsSnap.docs
-          .map((d) => {'id': d.id, ...d.data()}).toList();
-
-      // 4. SafeCheck history
-      final scSnap = await db.collection('safeChecks')
-          .where('userId', isEqualTo: userId).limit(500).get();
-      export['safeChecks'] = scSnap.docs
-          .map((d) => {'id': d.id, ...d.data()}).toList();
-
-      // 5. Matches involving this user
-      final matchSnapA = await db.collection('matches')
-          .where('userA', isEqualTo: userId).limit(500).get();
-      final matchSnapB = await db.collection('matches')
-          .where('userB', isEqualTo: userId).limit(500).get();
-      export['matches'] = [
-        ...matchSnapA.docs.map((d) => {'id': d.id, ...d.data()}),
-        ...matchSnapB.docs.map((d) => {'id': d.id, ...d.data()}),
-      ];
-
-      // 6. Reports filed BY this user (so they can see what they reported)
-      final reportsSnap = await db.collection('reports')
-          .where('reporterId', isEqualTo: userId).limit(500).get();
-      export['reportsFiled'] = reportsSnap.docs
-          .map((d) => {'id': d.id, ...d.data()}).toList();
-
-      // 7. Audit actions affecting this user
-      final auditSnap = await db.collection('audit_log')
-          .where('targetId', isEqualTo: userId).limit(500).get();
-      export['auditEntriesAboutMe'] = auditSnap.docs
-          .map((d) => {'id': d.id, ...d.data()}).toList();
-
+      // Data assembly lives in admin_gdpr_logic.dart so it can be tested
+      // against fake_cloud_firestore without mounting the widget.
+      final export = await buildUserExportData(db, userId);
       // Convert non-JSON-serialisable values (Timestamps, etc.)
       final jsonText = const JsonEncoder.withIndent('  ')
           .convert(normaliseForJson(export));
@@ -289,13 +251,6 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
     return result ?? false;
   }
 
-  String _timeAgo(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -333,13 +288,13 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
           const SizedBox(height: 20),
           Row(
             children: [
-              _buildStatCard('Pending', _pendingCount, AppColors.warning),
+              _buildStatCard('Pending', _counts.pending, AppColors.warning),
               const SizedBox(width: 12),
-              _buildStatCard('Processing', _processingCount, Colors.blue),
+              _buildStatCard('Processing', _counts.processing, Colors.blue),
               const SizedBox(width: 12),
-              _buildStatCard('Completed', _completedCount, AppColors.online),
+              _buildStatCard('Completed', _counts.completed, AppColors.online),
               const SizedBox(width: 12),
-              _buildStatCard('Total', _requests.length, AppColors.dark),
+              _buildStatCard('Total', _counts.total, AppColors.dark),
             ],
           ),
           const SizedBox(height: 20),
@@ -372,6 +327,49 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _buildRequestCard(r),
                 )),
+          // Cursor-paginated tail: shows "Load more" until the last page
+          // returns short, then displays "End of list". Filter pills run
+          // client-side on the loaded set, so the count comment makes
+          // clear we may have unloaded matches behind the cursor.
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Showing ${filtered.length} of ${_requests.length} loaded',
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 13),
+              ),
+              if (_paginator.hasMore)
+                SizedBox(
+                  height: 36,
+                  child: ElevatedButton.icon(
+                    onPressed: _loadingMore ? null : _fetchMore,
+                    icon: _loadingMore
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.expand_more, size: 16),
+                    label: Text(_loadingMore ? 'Loading…' : 'Load more',
+                        style: const TextStyle(fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.dark,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                )
+              else if (_requests.isNotEmpty)
+                const Text('End of list',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+            ],
+          ),
         ],
       ),
     );
@@ -446,7 +444,7 @@ class _AdminGdprPageState extends State<AdminGdprPage> {
     final createdAt = r['createdAt'];
     String timeText = '';
     if (createdAt is Timestamp) {
-      timeText = _timeAgo(createdAt.toDate());
+      timeText = formatTimeAgo(createdAt.toDate());
     }
     final initial = userName.isNotEmpty ? userName[0].toUpperCase() : '?';
 

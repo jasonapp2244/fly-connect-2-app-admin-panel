@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
 import 'admin_audit_helper.dart';
+import 'admin_filter_logic.dart';
 
 class AdminUsersPage extends StatefulWidget {
   const AdminUsersPage({super.key});
@@ -81,44 +82,16 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   /// Backwards-compat alias for the existing onPressed handlers.
   Future<void> _fetchUsers() => _fetchFirstPage();
 
-  List<Map<String, dynamic>> get _filteredUsers {
-    var list = List<Map<String, dynamic>>.from(_users);
+  List<Map<String, dynamic>> get _filteredUsers =>
+      applyUsersFilter(_users, search: _search, filter: _filter);
 
-    if (_search.isNotEmpty) {
-      final query = _search.toLowerCase();
-      list = list.where((u) {
-        final name = (u['name'] ?? '').toString().toLowerCase();
-        final email = (u['email'] ?? '').toString().toLowerCase();
-        return name.contains(query) || email.contains(query);
-      }).toList();
-    }
+  UserCounts get _counts => UserCounts.from(_users);
 
-    switch (_filter) {
-      case 'verified':
-        list = list.where((u) => u['isVerified'] == true).toList();
-        break;
-      case 'unverified':
-        list = list.where((u) => u['isVerified'] != true).toList();
-        break;
-      case 'banned':
-        list = list.where((u) => u['isBanned'] == true).toList();
-        break;
-      case 'business':
-        list = list.where((u) => u['role'] == 'business').toList();
-        break;
-      case 'admin':
-        list = list.where((u) => u['role'] == 'admin').toList();
-        break;
-    }
-
-    return list;
-  }
-
-  int get _totalCount => _users.length;
-  int get _verifiedCount => _users.where((u) => u['isVerified'] == true).length;
-  int get _unverifiedCount => _users.where((u) => u['isVerified'] != true).length;
-  int get _bannedCount => _users.where((u) => u['isBanned'] == true).length;
-  int get _businessCount => _users.where((u) => u['role'] == 'business').length;
+  int get _totalCount => _counts.total;
+  int get _verifiedCount => _counts.verified;
+  int get _unverifiedCount => _counts.unverified;
+  int get _bannedCount => _counts.banned;
+  int get _businessCount => _counts.business;
 
   Future<void> _toggleBan(Map<String, dynamic> user) async {
     final uid = user['uid'] as String;

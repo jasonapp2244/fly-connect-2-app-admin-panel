@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
 import 'admin_audit_helper.dart';
+import 'cursor_paginator.dart';
 
 class AdminPromotionsPage extends StatefulWidget {
   const AdminPromotionsPage({super.key});
@@ -14,6 +15,13 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
   List<Map<String, dynamic>> _promos = [];
   String _filter = 'all';
   bool _loading = true;
+  bool _loadingMore = false;
+
+  final _paginator = CursorPaginator(pageSize: 50);
+
+  Query<Map<String, dynamic>> get _baseQuery => FirebaseFirestore.instance
+      .collection('promotions')
+      .orderBy('createdAt', descending: true);
 
   @override
   void initState() {
@@ -22,13 +30,10 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
   }
 
   Future<void> _fetchPromos() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; });
+    _paginator.reset();
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('promotions')
-          .orderBy('createdAt', descending: true)
-          .limit(100)
-          .get();
+      final snapshot = await _paginator.fetchFirst(_baseQuery);
       if (!mounted) return;
       setState(() {
         _promos = snapshot.docs.map((doc) {
@@ -41,6 +46,26 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
       debugPrint('[AdminPromotions] fetch failed: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _fetchMore() async {
+    if (_loadingMore || !_paginator.hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final snap = await _paginator.fetchNext(_baseQuery);
+      if (!mounted || snap == null) return;
+      setState(() {
+        _promos.addAll(snap.docs.map((doc) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          return data;
+        }));
+      });
+    } catch (e) {
+      debugPrint('[AdminPromotions] fetchMore failed: $e');
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
@@ -236,6 +261,49 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _buildPromoCard(p),
                 )),
+          if (_promos.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Showing ${filtered.length} of ${_promos.length} loaded',
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13),
+                ),
+                if (_paginator.hasMore)
+                  SizedBox(
+                    height: 36,
+                    child: ElevatedButton.icon(
+                      onPressed: _loadingMore ? null : _fetchMore,
+                      icon: _loadingMore
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.expand_more, size: 16),
+                      label: Text(
+                          _loadingMore ? 'Loading…' : 'Load more',
+                          style: const TextStyle(fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.dark,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  )
+                else
+                  const Text('End of list',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12)),
+              ],
+            ),
+          ],
         ],
       ),
     );
