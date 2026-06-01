@@ -198,8 +198,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
               builder: (_, snap) {
                 final typing = snap.data?.entries
                     .where((e) => e.key != myUid && e.value).isNotEmpty ?? false;
+                // Contrast: `AppColors.primary` (neon yellow-green) on white
+                // is 1.7:1 — fails WCAG AA. `AppColors.online` is a darker
+                // green that passes the 3:1 large-text contrast bar and
+                // matches the rest of the app's status indicators.
                 return Text(typing ? 'typing...' : 'Online',
-                  style: const TextStyle(fontSize: 11, color: AppColors.primary));
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.online));
               }),
           ]),
         ]),
@@ -243,7 +250,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                         if (!isMe && widget.isGroup) Text(m.senderName,
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                          // Sender label sits on Colors.grey.shade100 (≈ white)
+                          // for incoming bubbles — primary fails contrast there.
+                          // AppColors.dark gives 13.6:1 and reads clearly.
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.dark)),
                         Text(m.text, style: TextStyle(color: isMe ? AppColors.dark : Colors.black87, fontSize: 15)),
                         const SizedBox(height: 2),
                         Row(mainAxisSize: MainAxisSize.min, children: [

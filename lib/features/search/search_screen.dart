@@ -114,10 +114,12 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           subtitle: Text('${u.airline ?? ''} · ${u.position ?? ''}', style: const TextStyle(fontSize: 12)),
           trailing: OutlinedButton(
             onPressed: () => context.push('${AppRoutes.userProfile}/${u.uid}'),
-            style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.primary),
+            // Contrast: 'View' on white with primary fails AA (1.7:1).
+            // Switch text + border to dark so the button reads cleanly.
+            style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.dark),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-            child: const Text('View', style: TextStyle(color: AppColors.primary, fontSize: 12))),
+            child: const Text('View', style: TextStyle(color: AppColors.dark, fontSize: 12, fontWeight: FontWeight.w600))),
           onTap: () => context.push('${AppRoutes.userProfile}/${u.uid}'),
         );
       },

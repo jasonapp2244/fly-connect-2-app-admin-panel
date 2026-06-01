@@ -28,7 +28,8 @@ class _MatchPreferencesScreenState extends State<MatchPreferencesScreen> {
         title: const Text('Match Preferences', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context),
-            child: const Text('Save', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 16))),
+            // Save sits on a white AppBar — primary fails AA. Use dark.
+            child: const Text('Save', style: TextStyle(color: AppColors.dark, fontWeight: FontWeight.bold, fontSize: 16))),
         ],
       ),
       body: ListView(padding: const EdgeInsets.all(20), children: [

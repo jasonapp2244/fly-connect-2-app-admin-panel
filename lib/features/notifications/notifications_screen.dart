@@ -61,7 +61,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title: Text('Notifications', style: AppTextStyles.h3.copyWith(color: AppColors.dark)),
         actions: [TextButton(
           onPressed: () => context.read<NotificationProvider>().markAllAsRead(),
-          child: const Text('Mark all read', style: TextStyle(color: AppColors.primary, fontSize: 13)),
+          // Contrast: 'Mark all read' sits in a white AppBar — primary fails AA (1.7:1).
+          child: const Text('Mark all read', style: TextStyle(color: AppColors.dark, fontSize: 13, fontWeight: FontWeight.w600)),
         )],
       ),
       body: Consumer<NotificationProvider>(

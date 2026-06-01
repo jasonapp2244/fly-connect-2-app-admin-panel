@@ -9,19 +9,26 @@ FlyConnect is a social networking app for aviation industry employees (pilots, f
 - **Framework:** Flutter (Dart SDK 3.0.0 - <4.0.0)
 - **State Management:** Provider (ChangeNotifier pattern)
 - **Navigation:** GoRouter with deep linking
-- **Backend:** Firebase (Firestore, Auth, Storage, FCM) — currently mock-first
+- **Backend:** Firebase (Firestore, Auth, Storage, FCM, Crashlytics, Analytics) — real Firebase is the default
 - **Maps:** flutter_map + OpenStreetMap tiles + latlong2
 - **Design:** Material3, Inter font, dark navy + neon yellow-green brand colors
 
 ## Development Mode
 
-The project runs in **mock mode** by default:
-- Entry point: `lib/main_mock.dart`
+The project runs on **real Firebase** by default:
+- Default entry point: `lib/main.dart` (Firebase init + Crashlytics + Analytics + FCM)
+- Real providers: `lib/shared/providers/real_providers.dart`
+- Firebase config: `lib/core/config/firebase_config.dart`
+- Admin web entry: `lib/main_admin.dart`
+
+**Mock mode** is opt-in for fast UI work without a Firebase round-trip:
+- Mock entry point: `lib/main_mock.dart`
 - Mock providers: `lib/shared/mock/mock_providers.dart`
 - Mock data: `lib/shared/mock/mock_data.dart`
-- Real Firebase entry: `lib/main.dart` (not wired yet)
+- Switches every provider to `isMock: true` (in-memory state, no Firestore queries)
 
-To switch to real Firebase: update provider imports from `mock_providers.dart` to `lib/shared/providers/` and configure Firebase credentials in `lib/core/config/firebase_config.dart`.
+Run real Firebase: `flutter run` (uses `lib/main.dart` automatically).
+Run mock mode: `flutter run -t lib/main_mock.dart`.
 
 ## Conventions
 
@@ -36,7 +43,9 @@ To switch to real Firebase: update provider imports from `mock_providers.dart` t
 ## Key Commands
 
 ```bash
-flutter run -t lib/main_mock.dart     # Run in mock mode
+flutter run                           # Run on real Firebase (default: lib/main.dart)
+flutter run -t lib/main_mock.dart     # Run in mock mode (no backend round-trip)
+flutter run -t lib/main_admin.dart    # Run the admin web shell
 flutter analyze                        # Check for errors
 flutter test                          # Run tests
 ```

@@ -99,30 +99,55 @@ class _LoginScreenState extends State<LoginScreen> {
           const Text('Sign in to your account', style: TextStyle(color: Colors.grey, fontSize: 15)),
           const SizedBox(height: 32),
 
-          // Error
-          if (_error != null) Container(
-            padding: const EdgeInsets.all(12), margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.red.shade200)),
-            child: Row(children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 18),
-              const SizedBox(width: 8),
-              Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13))),
-            ])),
+          // Error — wrapped in a live region so TalkBack announces the
+          // failure the moment it appears (e.g. "Login failed.").
+          if (_error != null) Semantics(
+            liveRegion: true,
+            container: true,
+            label: 'Error: $_error',
+            child: Container(
+              padding: const EdgeInsets.all(12), margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red.shade200)),
+              child: Row(children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13))),
+              ]),
+            ),
+          ),
 
-          // Email
+          // Email — required field, announced as "Email, required, edit box".
           const Text('Email', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
           const SizedBox(height: 6),
-          AppTextField(hint: 'Enter your email', controller: _emailCtrl,
-            keyboardType: TextInputType.emailAddress),
+          Semantics(
+            textField: true,
+            label: 'Email, required',
+            child: AppTextField(
+              hint: 'Enter your email',
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+            ),
+          ),
           const SizedBox(height: 16),
 
-          // Password
+          // Password — required field, announced as "Password, required, edit box".
           const Text('Password', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
           const SizedBox(height: 6),
-          AppTextField(hint: 'Enter your password', controller: _passCtrl, obscureText: _obscure,
-            suffixIcon: IconButton(icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
-              onPressed: () => setState(() => _obscure = !_obscure))),
+          Semantics(
+            textField: true,
+            label: 'Password, required',
+            child: AppTextField(
+              hint: 'Enter your password',
+              controller: _passCtrl,
+              obscureText: _obscure,
+              suffixIcon: IconButton(
+                icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
+                tooltip: _obscure ? 'Show password' : 'Hide password',
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+            ),
+          ),
 
           Align(alignment: Alignment.centerRight,
             child: TextButton(

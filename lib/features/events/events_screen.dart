@@ -217,10 +217,11 @@ class _EventListTile extends StatelessWidget {
           Text(event.title, style: AppTextStyles.labelMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
           Row(children: [
-            const Icon(Icons.calendar_today_outlined, size: 12, color: AppColors.primary),
+            // Card is white — primary on white is 1.7:1 (fail). Use dark.
+            const Icon(Icons.calendar_today_outlined, size: 12, color: AppColors.dark),
             const SizedBox(width: 3),
             Text(DateFormat('MMM d, y').format(event.date),
-              style: AppTextStyles.caption.copyWith(color: AppColors.primary)),
+              style: AppTextStyles.caption.copyWith(color: AppColors.dark, fontWeight: FontWeight.w600)),
           ]),
           const SizedBox(height: 2),
           Row(children: [

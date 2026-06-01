@@ -278,26 +278,43 @@ class _SignupScreenState extends State<SignupScreen> {
             ]),
             const SizedBox(height: 20),
             if (_role == 'user') ...[
-              AppTextField(hint: 'Full Name', controller: _nameCtrl,
-                prefixIcon: const Icon(Icons.person_outline, size: 20)),
+              Semantics(
+                textField: true,
+                label: 'Full name, required',
+                child: AppTextField(hint: 'Full Name', controller: _nameCtrl,
+                  prefixIcon: const Icon(Icons.person_outline, size: 20)),
+              ),
               const SizedBox(height: 14),
             ],
-            AppTextField(hint: 'Email Address', controller: _emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              prefixIcon: const Icon(Icons.email_outlined, size: 20)),
+            Semantics(
+              textField: true,
+              label: 'Email address, required',
+              child: AppTextField(hint: 'Email Address', controller: _emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                prefixIcon: const Icon(Icons.email_outlined, size: 20)),
+            ),
             const SizedBox(height: 14),
             if (_role == 'user') ...[
-              AppTextField(hint: 'Phone Number (optional)', controller: _phoneCtrl,
-                keyboardType: TextInputType.phone,
-                prefixIcon: const Icon(Icons.phone_outlined, size: 20)),
+              Semantics(
+                textField: true,
+                label: 'Phone number, optional',
+                child: AppTextField(hint: 'Phone Number (optional)', controller: _phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  prefixIcon: const Icon(Icons.phone_outlined, size: 20)),
+              ),
               const SizedBox(height: 14),
             ],
-            AppTextField(hint: 'Password', controller: _passwordCtrl,
-              obscureText: _obscure,
-              prefixIcon: const Icon(Icons.lock_outline, size: 20),
-              suffixIcon: IconButton(
-                icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
-                onPressed: () => setState(() => _obscure = !_obscure))),
+            Semantics(
+              textField: true,
+              label: 'Password, required, minimum 8 characters',
+              child: AppTextField(hint: 'Password', controller: _passwordCtrl,
+                obscureText: _obscure,
+                prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                suffixIcon: IconButton(
+                  icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
+                  tooltip: _obscure ? 'Show password' : 'Hide password',
+                  onPressed: () => setState(() => _obscure = !_obscure))),
+            ),
             if (_role == 'user') ...[
               const SizedBox(height: 14),
               // Age gate — required for users. 18+ enforced in _nextStep.
@@ -408,15 +425,27 @@ class _SignupScreenState extends State<SignupScreen> {
             ]),
             const SizedBox(height: 14),
             Row(children: [
-              Expanded(child: SocialLoginButton(
-                icon: const Text('G', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF4285F4))),
-                onTap: _loading ? null : _signupWithGoogle,
-              )),
+              Expanded(
+                child: Semantics(
+                  button: true,
+                  label: 'Sign up with Google',
+                  child: SocialLoginButton(
+                    icon: const Text('G', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF4285F4))),
+                    onTap: _loading ? null : _signupWithGoogle,
+                  ),
+                ),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: SocialLoginButton(
-                icon: const Icon(Icons.apple, size: 20),
-                onTap: _loading ? null : _signupWithApple,
-              )),
+              Expanded(
+                child: Semantics(
+                  button: true,
+                  label: 'Sign up with Apple',
+                  child: SocialLoginButton(
+                    icon: const Icon(Icons.apple, size: 20),
+                    onTap: _loading ? null : _signupWithApple,
+                  ),
+                ),
+              ),
             ]),
             const SizedBox(height: 20),
             Center(child: GestureDetector(

@@ -102,7 +102,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             onPressed: _saving ? null : _save,
             child: _saving
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
-              : const Text('Save', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 16))),
+              // White AppBar — primary fails AA. Use dark for the Save label.
+              : const Text('Save', style: TextStyle(color: AppColors.dark, fontWeight: FontWeight.bold, fontSize: 16))),
         ],
       ),
       body: SingleChildScrollView(
