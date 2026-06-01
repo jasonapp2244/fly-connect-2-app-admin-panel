@@ -6,6 +6,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../core/constants/app_routes.dart';
 import '../../shared/widgets/shared_widgets.dart';
+import '../../shared/widgets/inline_error_banner.dart';
 import '../../shared/providers/event_provider.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../../shared/models/models.dart';
@@ -48,16 +49,21 @@ class _EventsScreenState extends State<EventsScreen> with SingleTickerProviderSt
         builder: (context, provider, _) {
           final events = provider.events;
           final featured = events.where((e) => e.isFeatured).toList();
+          final err = provider.eventsError;
 
           return RefreshIndicator(
             color: AppColors.primary,
             onRefresh: () async {
               // Trigger a fresh snapshot from Firestore
-              context.read<EventProvider>().updateAuth(
-                  context.read<AuthProvider>());
+              context.read<EventProvider>().retryEvents();
               await Future.delayed(const Duration(milliseconds: 400));
             },
             child: ListView(children: [
+              if (err != null)
+                InlineErrorBanner(
+                  message: err,
+                  onRetry: provider.retryEvents,
+                ),
               // Header
               Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(children: [

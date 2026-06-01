@@ -149,8 +149,19 @@ class _GroupList extends StatelessWidget {
       builder: (context, provider, _) {
         final uid = context.read<AuthProvider>().currentUser?.uid ?? '';
         final groups = provider.chats.where((c) => c.type == 'group').toList();
+        final err = provider.chatsError;
 
         if (groups.isNotEmpty) onLoaded();
+
+        if (err != null && groups.isEmpty) {
+          return Column(children: [
+            InlineErrorBanner(
+              message: err,
+              onRetry: provider.retryChats,
+            ),
+            const Expanded(child: SizedBox.shrink()),
+          ]);
+        }
 
         if (groups.isEmpty) {
           if (!initialLoadComplete) {

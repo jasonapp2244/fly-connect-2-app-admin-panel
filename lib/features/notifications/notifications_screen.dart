@@ -7,6 +7,7 @@ import '../../core/constants/app_text_styles.dart';
 import '../../shared/providers/providers.dart';
 import '../../shared/widgets/skeleton.dart';
 import '../../shared/widgets/shared_widgets.dart';
+import '../../shared/widgets/inline_error_banner.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -68,10 +69,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: Consumer<NotificationProvider>(
         builder: (ctx, provider, _) {
           final notifications = provider.notifications;
+          final err = provider.notificationsError;
           if (notifications.isNotEmpty && !_initialLoadComplete) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) setState(() => _initialLoadComplete = true);
             });
+          }
+          if (err != null && notifications.isEmpty) {
+            return Column(children: [
+              InlineErrorBanner(
+                message: err,
+                onRetry: provider.retryNotifications,
+              ),
+              const Expanded(child: SizedBox.shrink()),
+            ]);
           }
           if (notifications.isEmpty) {
             if (!_initialLoadComplete) {

@@ -9,6 +9,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../core/constants/app_routes.dart';
 import '../../shared/widgets/shared_widgets.dart';
+import '../../shared/widgets/inline_error_banner.dart';
 import '../../shared/models/models.dart';
 import '../../shared/providers/real_providers.dart';
 import '../../shared/utils/open_chat.dart';
@@ -66,6 +67,7 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
   final _mapController = MapController();
   List<_NearbyUser> _nearbyUsers = [];
   bool _loadingUsers = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -74,6 +76,9 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
   }
 
   Future<void> _loadNearbyUsers() async {
+    if (mounted) {
+      setState(() { _loadingUsers = true; _loadError = null; });
+    }
     final auth = context.read<AuthProvider>();
     final myUid = auth.currentUser?.uid;
 
@@ -99,29 +104,38 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
       } catch (_) {/* fail open */}
     }
 
-    final snap = await FirebaseFirestore.instance.collection('users')
-        .where('role', isEqualTo: 'user')
-        .limit(20) // fetch extra so blocks don't shrink the list to nothing
-        .get();
-    final users = <_NearbyUser>[];
-    int coordIdx = 0;
-    for (final doc in snap.docs) {
-      if (doc.id == myUid) continue;
-      if (blockedByMe.contains(doc.id)) continue;
-      if (blockedMe.contains(doc.id)) continue;
-      if (users.length >= 10) break;
-      final d = doc.data();
-      final coord = _nearbyCoords[coordIdx % _nearbyCoords.length];
-      users.add(_NearbyUser(
-        uid: doc.id,
-        name: d['name'] ?? 'User',
-        airline: d['airline'] ?? '',
-        position: d['position'] ?? '',
-        lat: coord.$1, lng: coord.$2, distance: coord.$3,
-      ));
-      coordIdx++;
+    try {
+      final snap = await FirebaseFirestore.instance.collection('users')
+          .where('role', isEqualTo: 'user')
+          .limit(20) // fetch extra so blocks don't shrink the list to nothing
+          .get();
+      final users = <_NearbyUser>[];
+      int coordIdx = 0;
+      for (final doc in snap.docs) {
+        if (doc.id == myUid) continue;
+        if (blockedByMe.contains(doc.id)) continue;
+        if (blockedMe.contains(doc.id)) continue;
+        if (users.length >= 10) break;
+        final d = doc.data();
+        final coord = _nearbyCoords[coordIdx % _nearbyCoords.length];
+        users.add(_NearbyUser(
+          uid: doc.id,
+          name: d['name'] ?? 'User',
+          airline: d['airline'] ?? '',
+          position: d['position'] ?? '',
+          lat: coord.$1, lng: coord.$2, distance: coord.$3,
+        ));
+        coordIdx++;
+      }
+      if (mounted) setState(() { _nearbyUsers = users; _loadingUsers = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadError = 'Could not load nearby users.';
+          _loadingUsers = false;
+        });
+      }
     }
-    if (mounted) setState(() { _nearbyUsers = users; _loadingUsers = false; });
   }
 
   @override
@@ -166,12 +180,19 @@ class _NearbyUsersScreenState extends State<NearbyUsersScreen> {
             ),
           ]),
         ),
+        if (_loadError != null && _nearbyUsers.isEmpty)
+          InlineErrorBanner(
+            message: _loadError!,
+            onRetry: _loadNearbyUsers,
+          ),
         Expanded(
           child: _loadingUsers
             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-            : _nearbyUsers.isEmpty
-              ? const Center(child: Text('No nearby users found', style: TextStyle(color: Colors.grey)))
-              : _listView ? _buildList(safeCheck) : _buildMap(safeCheck),
+            : _loadError != null && _nearbyUsers.isEmpty
+              ? const SizedBox.shrink()
+              : _nearbyUsers.isEmpty
+                ? const Center(child: Text('No nearby users found', style: TextStyle(color: Colors.grey)))
+                : _listView ? _buildList(safeCheck) : _buildMap(safeCheck),
         ),
       ]),
     );

@@ -1070,8 +1070,14 @@ class EventProvider extends ChangeNotifier {
   final Set<String> _rsvpd = {};
   StreamSubscription? _eventsSub;
   AuthProvider? _storedAuth;
+  String? _eventsError;
 
   List<EventModel> get events => _events;
+
+  /// Non-null when the events stream has reported a failure. Cleared on
+  /// every successful snapshot or via [retryEvents].
+  String? get eventsError => _eventsError;
+
   String? get _uid => isMock ? (_storedAuth?.currentUser?.uid ?? 'user_001') : _auth.currentUser?.uid;
 
   EventProvider({this.isMock = false}) {
@@ -1081,9 +1087,24 @@ class EventProvider extends ChangeNotifier {
   void updateAuth(AuthProvider auth) {
     _storedAuth = auth;
     if (isMock) return;
+    _subscribeEvents();
+  }
+
+  /// Re-subscribe to the events stream. Wired to InlineErrorBanner Retry.
+  void retryEvents() {
+    if (isMock) return;
+    _subscribeEvents();
+  }
+
+  void _subscribeEvents() {
     _eventsSub?.cancel();
+    _eventsError = null;
     _eventsSub = _db.collection('events').orderBy('date').snapshots().listen((snap) {
       _events = snap.docs.map((d) => EventModel.fromFirestore(d)).toList();
+      if (_eventsError != null) _eventsError = null;
+      notifyListeners();
+    }, onError: (Object err) {
+      _eventsError = 'Could not load events.';
       notifyListeners();
     });
   }
@@ -1287,9 +1308,14 @@ class NotificationProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   List<NotificationModel> _notifications = [];
   StreamSubscription? _notifSub;
+  AuthProvider? _storedAuth;
+  String? _notificationsError;
 
   List<NotificationModel> get notifications => _notifications;
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
+
+  /// Non-null when the notifications stream has reported a failure.
+  String? get notificationsError => _notificationsError;
 
   NotificationProvider({this.isMock = false}) {
     if (isMock) _notifications = List.from(mockNotifications);
@@ -1297,16 +1323,31 @@ class NotificationProvider extends ChangeNotifier {
 
   void updateAuth(AuthProvider auth) {
     if (isMock) return;
+    _storedAuth = auth;
+    _subscribeNotifications();
+  }
+
+  /// Re-subscribe to the notifications stream. Wired to InlineErrorBanner Retry.
+  void retryNotifications() {
+    if (isMock) return;
+    _subscribeNotifications();
+  }
+
+  void _subscribeNotifications() {
     _notifSub?.cancel();
-    final uid = auth.currentUser?.uid;
-    if (uid != null) {
-      _notifSub = _db.collection('notifications')
-          .where('userId', isEqualTo: uid).orderBy('createdAt', descending: true).limit(50)
-          .snapshots().listen((snap) {
-        _notifications = snap.docs.map((d) => NotificationModel.fromFirestore(d)).toList();
-        notifyListeners();
-      });
-    }
+    final uid = _storedAuth?.currentUser?.uid;
+    if (uid == null) return;
+    _notificationsError = null;
+    _notifSub = _db.collection('notifications')
+        .where('userId', isEqualTo: uid).orderBy('createdAt', descending: true).limit(50)
+        .snapshots().listen((snap) {
+      _notifications = snap.docs.map((d) => NotificationModel.fromFirestore(d)).toList();
+      if (_notificationsError != null) _notificationsError = null;
+      notifyListeners();
+    }, onError: (Object err) {
+      _notificationsError = 'Could not load notifications.';
+      notifyListeners();
+    });
   }
 
   Stream<List<NotificationModel>> watchNotifications() => Stream.value(_notifications);
