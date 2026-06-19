@@ -102,6 +102,8 @@
 		<dict>
 			<key>NSAllowsArbitraryLoads</key>
 			<false/>
+			<!-- OpenStreetMap tile server uses HTTPS — no exception needed. -->
+			<!-- Google Fonts fetches over HTTPS — no exception needed. -->
 		</dict>
 		<!-- ==================== Push Notifications ==================== -->
 		<!-- Background modes required for FCM delivery when the app is backgrounded. -->
@@ -110,6 +112,11 @@
 			<string>fetch</string>
 			<string>remote-notification</string>
 		</array>
+		<!-- ==================== Export Compliance ==================== -->
+		<!-- The app uses HTTPS (TLS) for Firebase API calls, which qualifies -->
+		<!-- for the encryption exemption under BIS Category 5 Part 2. -->
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
 		<key>FirebaseAppDelegateProxyEnabled</key>
 		<false/>
 		<!-- ==================== LSApplicationQueriesSchemes ==================== -->

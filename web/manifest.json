@@ -1,11 +1,11 @@
 {
-    "name": "flyconnect",
-    "short_name": "flyconnect",
+    "name": "FlyConnect",
+    "short_name": "FlyConnect",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#1A1D27",
     "theme_color": "#D4F53C",
-    "description": "A new Flutter project.",
+    "description": "Social networking for aviation industry employees.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
