@@ -17,7 +17,6 @@ import '../../shared/providers/user_provider.dart';
 import '../../shared/providers/promotion_provider.dart';
 import '../../shared/models/models.dart';
 import '../../shared/mock/story_state.dart';
-import 'post_details_screen.dart';
 import 'story_viewer_screen.dart';
 import 'main_shell.dart' show AppDrawer;
 

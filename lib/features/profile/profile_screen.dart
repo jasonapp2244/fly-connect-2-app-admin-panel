@@ -13,7 +13,6 @@ import '../../shared/utils/open_chat.dart';
 import '../../shared/models/models.dart';
 import '../../shared/mock/story_state.dart';
 import '../home/story_viewer_screen.dart';
-import '../home/post_details_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isOwner;
