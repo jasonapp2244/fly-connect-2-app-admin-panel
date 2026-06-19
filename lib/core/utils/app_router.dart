@@ -37,6 +37,8 @@ import '../../features/trips/trips_screen.dart';
 import '../../features/groups/groups_screen.dart';
 import '../../features/groups/group_details_screen.dart';
 import '../../features/home/create_post_screen.dart';
+import '../../features/home/post_details_screen.dart';
+import '../../shared/providers/post_provider.dart';
 import '../../features/business/business_shell.dart';
 import '../../features/business/group_management_screen.dart';
 import '../../features/business/event_management_screen.dart';
@@ -189,6 +191,20 @@ final GoRouter appRouter = GoRouter(
 
     GoRoute(path: '/groups/:groupId',
       builder: (_, state) => GroupDetailsScreen(groupId: state.pathParameters['groupId'] ?? '')),
+
+    GoRoute(path: '/posts/:postId',
+      builder: (context, state) {
+        final postId = state.pathParameters['postId'] ?? '';
+        final posts = context.read<PostProvider>().feed;
+        final post = posts.where((p) => p.id == postId).firstOrNull;
+        if (post == null) {
+          return const NotFoundScreen(
+            title: 'Post not found',
+            message: 'This post may have been removed or is no longer available.',
+          );
+        }
+        return PostDetailsScreen(post: post);
+      }),
 
     GoRoute(path: '/passport/:userId',
       builder: (_, state) => TripsScreen(userId: state.pathParameters['userId'])),

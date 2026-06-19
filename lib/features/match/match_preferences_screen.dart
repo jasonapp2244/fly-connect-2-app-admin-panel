@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
+import '../../shared/providers/auth_provider.dart';
+import '../../shared/providers/user_provider.dart';
 
 class MatchPreferencesScreen extends StatefulWidget {
   const MatchPreferencesScreen({super.key});
@@ -14,9 +17,72 @@ class _MatchPreferencesScreenState extends State<MatchPreferencesScreen> {
   bool _verifiedOnly = false;
   final List<String> _selectedAirlines = [];
   final List<String> _selectedPositions = [];
+  bool _saving = false;
 
   static const _airlines = ['Delta', 'United', 'American', 'Southwest', 'JetBlue', 'Alaska', 'Spirit'];
   static const _positions = ['Pilot', 'Flight Attendant', 'Gate Agent', 'Ground Crew', 'TSA'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  void _loadPreferences() {
+    final user = context.read<UserProvider>().currentUser;
+    if (user == null) return;
+    // Read matchPreferences from the user's Firestore doc (stored as a map)
+    // The data comes through UserModel.fromFirestore → stored on the raw doc
+    // We access it via UserProvider since UserModel doesn't have a dedicated field.
+    final prefs = context.read<UserProvider>().matchPreferences;
+    if (prefs == null) return;
+    setState(() {
+      _maxDistance = (prefs['maxDistance'] as num?)?.toDouble() ?? 50;
+      _ageRange = RangeValues(
+        (prefs['ageMin'] as num?)?.toDouble() ?? 22,
+        (prefs['ageMax'] as num?)?.toDouble() ?? 45,
+      );
+      _sameAirline = prefs['sameAirline'] as bool? ?? false;
+      _verifiedOnly = prefs['verifiedOnly'] as bool? ?? false;
+      final airlines = prefs['airlines'];
+      if (airlines is List) {
+        _selectedAirlines.addAll(airlines.cast<String>());
+      }
+      final positions = prefs['positions'];
+      if (positions is List) {
+        _selectedPositions.addAll(positions.cast<String>());
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final uid = context.read<AuthProvider>().currentUser?.uid;
+    if (uid == null) return;
+    final prefs = <String, dynamic>{
+      'maxDistance': _maxDistance.round(),
+      'ageMin': _ageRange.start.round(),
+      'ageMax': _ageRange.end.round(),
+      'sameAirline': _sameAirline,
+      'verifiedOnly': _verifiedOnly,
+      'airlines': _selectedAirlines,
+      'positions': _selectedPositions,
+    };
+    try {
+      await context.read<UserProvider>().updateProfile(uid, {'matchPreferences': prefs});
+      if (!mounted) return;
+      setState(() => _saving = false);
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preferences saved!'), backgroundColor: Colors.green));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not save preferences.'),
+        backgroundColor: Colors.red, behavior: SnackBarBehavior.floating));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,9 +93,11 @@ class _MatchPreferencesScreenState extends State<MatchPreferencesScreen> {
         leading: IconButton(icon: const Icon(Icons.close, color: Colors.black), onPressed: () => Navigator.pop(context)),
         title: const Text('Match Preferences', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context),
-            // Save sits on a white AppBar — primary fails AA. Use dark.
-            child: const Text('Save', style: TextStyle(color: AppColors.dark, fontWeight: FontWeight.bold, fontSize: 16))),
+          TextButton(
+            onPressed: _saving ? null : _save,
+            child: _saving
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+              : const Text('Save', style: TextStyle(color: AppColors.dark, fontWeight: FontWeight.bold, fontSize: 16))),
         ],
       ),
       body: ListView(padding: const EdgeInsets.all(20), children: [

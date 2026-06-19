@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -58,17 +59,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _saving = true);
     final uid = context.read<AuthProvider>().currentUser?.uid;
     if (uid == null) return;
-    final updates = <String, dynamic>{
-      'name': _nameCtrl.text.trim(),
-      'bio': _bioCtrl.text.trim(),
-      'airline': _selectedAirline,
-      'position': _selectedPosition,
-      'airport': _airportCtrl.text.trim(),
-      'city': _cityCtrl.text.trim(),
-      'state': _stateCtrl.text.trim(),
-    };
     try {
-      await context.read<UserProvider>().updateProfile(uid, updates);
+      final userProvider = context.read<UserProvider>();
+
+      // Upload profile photo if a new one was picked
+      if (_pickedImage != null) {
+        final Uint8List bytes = await _pickedImage!.readAsBytes();
+        final url = await userProvider.uploadProfilePhoto(uid, bytes);
+        if (url == null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Photo upload failed. Other changes will still be saved.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      }
+
+      final updates = <String, dynamic>{
+        'name': _nameCtrl.text.trim(),
+        'bio': _bioCtrl.text.trim(),
+        'airline': _selectedAirline,
+        'position': _selectedPosition,
+        'airport': _airportCtrl.text.trim(),
+        'city': _cityCtrl.text.trim(),
+        'state': _stateCtrl.text.trim(),
+      };
+      await userProvider.updateProfile(uid, updates);
       if (!mounted) return;
       setState(() => _saving = false);
       Navigator.pop(context);

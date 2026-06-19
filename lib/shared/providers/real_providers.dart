@@ -518,6 +518,14 @@ class UserProvider extends ChangeNotifier {
 
   UserModel? get currentUser => _currentUser;
   bool get loading => false;
+  Map<String, dynamic>? _matchPreferences;
+  Map<String, dynamic>? _notificationPrefs;
+  Map<String, dynamic>? _privacySettings;
+
+  /// Match preferences stored on the user doc as a map.
+  Map<String, dynamic>? get matchPreferences => _matchPreferences;
+  Map<String, dynamic>? get notificationPrefs => _notificationPrefs;
+  Map<String, dynamic>? get privacySettings => _privacySettings;
 
   UserProvider({this.isMock = false}) {
     if (isMock) _following.addAll({'user_002', 'user_006'});
@@ -525,7 +533,22 @@ class UserProvider extends ChangeNotifier {
 
   void updateAuth(AuthProvider auth) {
     _currentUser = auth.currentUser;
+    if (_currentUser != null && !isMock) _loadUserPreferences(_currentUser!.uid);
     notifyListeners();
+  }
+
+  Future<void> _loadUserPreferences(String uid) async {
+    try {
+      final doc = await _db.collection('users').doc(uid).get();
+      if (!doc.exists) return;
+      final data = doc.data()!;
+      _matchPreferences = data['matchPreferences'] as Map<String, dynamic>?;
+      _notificationPrefs = data['notificationPrefs'] as Map<String, dynamic>?;
+      _privacySettings = data['privacySettings'] as Map<String, dynamic>?;
+      notifyListeners();
+    } catch (_) {
+      // Non-fatal — preferences will show defaults
+    }
   }
 
   Future<UserModel?> fetchUser(String uid) async {
@@ -546,9 +569,36 @@ class UserProvider extends ChangeNotifier {
     await _db.collection('users').doc(uid).update(data);
     if (_currentUser != null && uid == _currentUser!.uid) {
       final doc = await _db.collection('users').doc(uid).get();
-      if (doc.exists) _currentUser = UserModel.fromFirestore(doc);
+      if (doc.exists) {
+        _currentUser = UserModel.fromFirestore(doc);
+        final raw = doc.data()!;
+        _matchPreferences = raw['matchPreferences'] as Map<String, dynamic>?;
+        _notificationPrefs = raw['notificationPrefs'] as Map<String, dynamic>?;
+        _privacySettings = raw['privacySettings'] as Map<String, dynamic>?;
+      }
     }
     notifyListeners();
+  }
+
+  /// Upload a profile photo to Firebase Storage and update the user doc.
+  Future<String?> uploadProfilePhoto(String uid, Uint8List bytes) async {
+    if (isMock) return null;
+    try {
+      final compressed = await compressForUpload(bytes, maxDimension: 1024);
+      final ref = FirebaseStorage.instance
+          .ref('profile_photos/$uid/photo.png');
+      await ref.putData(compressed, SettableMetadata(contentType: 'image/png'));
+      final url = await ref.getDownloadURL();
+      await _db.collection('users').doc(uid).update({'photoUrl': url});
+      if (_currentUser != null && uid == _currentUser!.uid) {
+        _currentUser = _currentUser!.copyWith(photoUrl: url);
+      }
+      notifyListeners();
+      return url;
+    } catch (e) {
+      debugPrint('[UserProvider] photo upload failed: $e');
+      return null;
+    }
   }
 
   Future<void> followUser(String targetUid) async {
@@ -1099,7 +1149,9 @@ class EventProvider extends ChangeNotifier {
   void _subscribeEvents() {
     _eventsSub?.cancel();
     _eventsError = null;
-    _eventsSub = _db.collection('events').orderBy('date').snapshots().listen((snap) {
+    _eventsSub = _db.collection('events')
+        .where('isApproved', isEqualTo: true)
+        .orderBy('date').snapshots().listen((snap) {
       _events = snap.docs.map((d) => EventModel.fromFirestore(d)).toList();
       if (_eventsError != null) _eventsError = null;
       notifyListeners();
@@ -1237,6 +1289,7 @@ class MatchProvider extends ChangeNotifier {
   final List<MatchModel> _matches = [];
   bool _loading = false;
   AuthProvider? _storedAuth;
+  UserProvider? _userProvider;
 
   bool get loading => _loading;
   List<UserModel> get candidates => _candidates;
@@ -1251,12 +1304,43 @@ class MatchProvider extends ChangeNotifier {
     _storedAuth = auth;
   }
 
+  void updateUserProvider(UserProvider userProvider) {
+    _userProvider = userProvider;
+  }
+
   Future<void> loadCandidates() async {
     if (isMock) { _candidates = List.from(mockUsers); notifyListeners(); return; }
     if (_uid == null) return;
     _loading = true; notifyListeners();
-    final snap = await _db.collection('users').where('role', isEqualTo: 'user').limit(20).get();
-    _candidates = snap.docs.map((d) => UserModel.fromFirestore(d)).where((u) => u.uid != _uid).toList();
+
+    // Build query — apply verifiedOnly filter server-side when possible
+    Query query = _db.collection('users').where('role', isEqualTo: 'user');
+    final prefs = _userProvider?.matchPreferences;
+    if (prefs != null && prefs['verifiedOnly'] == true) {
+      query = query.where('isVerified', isEqualTo: true);
+    }
+    final snap = await query.limit(40).get();
+    var results = snap.docs.map((d) => UserModel.fromFirestore(d)).where((u) => u.uid != _uid).toList();
+
+    // Apply client-side filters from match preferences
+    if (prefs != null) {
+      final sameAirline = prefs['sameAirline'] as bool? ?? false;
+      final airlines = (prefs['airlines'] as List?)?.cast<String>() ?? [];
+      final positions = (prefs['positions'] as List?)?.cast<String>() ?? [];
+      final myAirline = _userProvider?.currentUser?.airline;
+
+      if (sameAirline && myAirline != null) {
+        results = results.where((u) => u.airline == myAirline).toList();
+      }
+      if (airlines.isNotEmpty) {
+        results = results.where((u) => u.airline != null && airlines.contains(u.airline)).toList();
+      }
+      if (positions.isNotEmpty) {
+        results = results.where((u) => u.position != null && positions.contains(u.position)).toList();
+      }
+    }
+
+    _candidates = results.take(20).toList();
     _loading = false; notifyListeners();
   }
 
@@ -1553,19 +1637,40 @@ class SafeCheckProvider extends ChangeNotifier {
     if (isMock) _checkIns = List.from(mockSafeChecks);
   }
 
+  String? _currentUid;
+
   void updateAuth(AuthProvider auth) {
     if (isMock) return;
+    _currentUid = auth.currentUser?.uid;
     _checkInSub?.cancel();
+
+    // Only stream check-ins for the current user rather than all users.
+    // The Nearby screen uses latestForUser() for display — those lookups
+    // are done from a separate single-doc fetch when needed.
+    if (_currentUid == null) return;
     _checkInSub = _db.collection('safeChecks')
-        .orderBy('createdAt', descending: true).limit(100).snapshots().listen((snap) {
+        .where('userId', isEqualTo: _currentUid)
+        .orderBy('createdAt', descending: true).limit(20).snapshots().listen((snap) {
       _checkIns = snap.docs.map((d) => SafeCheckModel.fromFirestore(d)).toList();
-      final uid = auth.currentUser?.uid;
-      if (uid != null) {
-        final my = _checkIns.where((c) => c.userId == uid && c.isActive).toList();
-        _myLatestCheckIn = my.isNotEmpty ? my.first : null;
-      }
+      final my = _checkIns.where((c) => c.isActive).toList();
+      _myLatestCheckIn = my.isNotEmpty ? my.first : null;
       notifyListeners();
     });
+  }
+
+  /// Fetch the latest active check-in for a specific user (on-demand, not streamed).
+  Future<SafeCheckModel?> fetchLatestForUser(String userId) async {
+    if (isMock) return latestForUser(userId);
+    try {
+      final snap = await _db.collection('safeChecks')
+          .where('userId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true).limit(1).get();
+      if (snap.docs.isEmpty) return null;
+      final model = SafeCheckModel.fromFirestore(snap.docs.first);
+      return model.isActive ? model : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   List<SafeCheckModel> nearbyCheckIns(String city) =>

@@ -285,8 +285,14 @@ final List<_QuerySpec> _queries = [
     orderBy: 'createdAt',
   ),
   _QuerySpec(
-    label: 'safeCheck stream (admin + SafeCheckProvider)',
+    label: 'safeCheck stream (admin)',
     collection: 'safeChecks',
+    orderBy: 'createdAt',
+  ),
+  _QuerySpec(
+    label: 'safeCheck per-user stream (SafeCheckProvider)',
+    collection: 'safeChecks',
+    equalities: ['userId'],
     orderBy: 'createdAt',
   ),
   _QuerySpec(

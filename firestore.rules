@@ -34,7 +34,8 @@ service cloud.firestore {
               'name','phone','photoUrl','bio','airline','airport','position',
               'city','state','hobbies','passportStamps','travelHistory',
               'followerCount','followingCount','postCount',
-              'lastSeen','fcmToken','matchType'
+              'lastSeen','fcmToken','matchType','matchPreferences',
+              'notificationPrefs','privacySettings'
             ]));
       allow delete: if isAdmin();
 
@@ -214,6 +215,32 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid;
       allow update: if isOwner(resource.data.userId);
       allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // ── Audit Log ─────────────────────────────────────────────
+    // Written by admin actions; only admins may read or write.
+    match /audit_log/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false; // audit records are immutable
+    }
+
+    // ── GDPR Requests ─────────────────────────────────────────
+    // Users may create requests for their own data; admins process them.
+    match /gdpr_requests/{requestId} {
+      allow read: if isAdmin()
+        || (isAuth() && resource.data.userId == request.auth.uid);
+      allow create: if isAuth()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── App Config (version check, feature flags) ─────────────
+    match /config/{docId} {
+      allow read: if true; // public — version check must work pre-auth
+      allow write: if isAdmin();
     }
   }
 }

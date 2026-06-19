@@ -9,6 +9,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_routes.dart';
 import '../../shared/widgets/confirm_dialog.dart';
 import '../../shared/providers/auth_provider.dart';
+import '../../shared/providers/user_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -35,6 +36,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadVersion();
+    _loadPreferences();
+  }
+
+  void _loadPreferences() {
+    final userProvider = context.read<UserProvider>();
+    final notifPrefs = userProvider.notificationPrefs;
+    if (notifPrefs != null) {
+      setState(() {
+        _pushLikes = notifPrefs['likes'] as bool? ?? true;
+        _pushComments = notifPrefs['comments'] as bool? ?? true;
+        _pushMatches = notifPrefs['matches'] as bool? ?? true;
+        _pushMessages = notifPrefs['messages'] as bool? ?? true;
+        _pushEvents = notifPrefs['events'] as bool? ?? false;
+        _pushSafeCheck = notifPrefs['safeCheck'] as bool? ?? true;
+      });
+    }
+    final privacy = userProvider.privacySettings;
+    if (privacy != null) {
+      setState(() {
+        _profilePublic = privacy['profilePublic'] as bool? ?? true;
+        _showOnNearby = privacy['showOnNearby'] as bool? ?? true;
+        _showAirline = privacy['showAirline'] as bool? ?? true;
+        _shareLocation = privacy['shareLocation'] as bool? ?? true;
+        _approxLocationOnly = privacy['approxLocationOnly'] as bool? ?? true;
+        _nearbyVisibility = privacy['nearbyVisibility'] as String? ?? 'all';
+      });
+    }
+  }
+
+  Future<void> _saveNotificationPrefs() async {
+    final uid = context.read<AuthProvider>().currentUser?.uid;
+    if (uid == null) return;
+    final prefs = {
+      'likes': _pushLikes, 'comments': _pushComments, 'matches': _pushMatches,
+      'messages': _pushMessages, 'events': _pushEvents, 'safeCheck': _pushSafeCheck,
+    };
+    try {
+      await context.read<UserProvider>().updateProfile(uid, {'notificationPrefs': prefs});
+    } catch (_) {}
+  }
+
+  Future<void> _savePrivacySettings() async {
+    final uid = context.read<AuthProvider>().currentUser?.uid;
+    if (uid == null) return;
+    final settings = {
+      'profilePublic': _profilePublic, 'showOnNearby': _showOnNearby,
+      'showAirline': _showAirline, 'shareLocation': _shareLocation,
+      'approxLocationOnly': _approxLocationOnly, 'nearbyVisibility': _nearbyVisibility,
+    };
+    try {
+      await context.read<UserProvider>().updateProfile(uid, {'privacySettings': settings});
+    } catch (_) {}
   }
 
   Future<void> _loadVersion() async {
@@ -72,29 +125,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
         _Section(title: 'Notifications', children: [
           _ToggleTile(icon: Icons.favorite_outline, label: 'Likes', value: _pushLikes,
-            onChanged: (v) => setState(() => _pushLikes = v)),
+            onChanged: (v) { setState(() => _pushLikes = v); _saveNotificationPrefs(); }),
           _ToggleTile(icon: Icons.chat_bubble_outline, label: 'Comments', value: _pushComments,
-            onChanged: (v) => setState(() => _pushComments = v)),
+            onChanged: (v) { setState(() => _pushComments = v); _saveNotificationPrefs(); }),
           _ToggleTile(icon: Icons.favorite_border, label: 'New Matches', value: _pushMatches,
-            onChanged: (v) => setState(() => _pushMatches = v)),
+            onChanged: (v) { setState(() => _pushMatches = v); _saveNotificationPrefs(); }),
           _ToggleTile(icon: Icons.message_outlined, label: 'Messages', value: _pushMessages,
-            onChanged: (v) => setState(() => _pushMessages = v)),
+            onChanged: (v) { setState(() => _pushMessages = v); _saveNotificationPrefs(); }),
           _ToggleTile(icon: Icons.event_outlined, label: 'Events Near You', value: _pushEvents,
-            onChanged: (v) => setState(() => _pushEvents = v)),
+            onChanged: (v) { setState(() => _pushEvents = v); _saveNotificationPrefs(); }),
           _ToggleTile(icon: Icons.health_and_safety, label: 'SafeCheck Alerts', value: _pushSafeCheck,
-            onChanged: (v) => setState(() => _pushSafeCheck = v)),
+            onChanged: (v) { setState(() => _pushSafeCheck = v); _saveNotificationPrefs(); }),
         ]),
         _Section(title: 'Privacy', children: [
           _ToggleTile(icon: Icons.public, label: 'Public Profile', value: _profilePublic,
-            onChanged: (v) => setState(() => _profilePublic = v)),
+            onChanged: (v) { setState(() => _profilePublic = v); _savePrivacySettings(); }),
           _ToggleTile(icon: Icons.location_on_outlined, label: 'Show on Nearby Map', value: _showOnNearby,
-            onChanged: (v) => setState(() => _showOnNearby = v)),
+            onChanged: (v) { setState(() => _showOnNearby = v); _savePrivacySettings(); }),
           _ToggleTile(icon: Icons.flight, label: 'Show Airline & Position', value: _showAirline,
-            onChanged: (v) => setState(() => _showAirline = v)),
+            onChanged: (v) { setState(() => _showAirline = v); _savePrivacySettings(); }),
           _ToggleTile(icon: Icons.share_location, label: 'Share Location for SafeCheck', value: _shareLocation,
-            onChanged: (v) => setState(() => _shareLocation = v)),
+            onChanged: (v) { setState(() => _shareLocation = v); _savePrivacySettings(); }),
           _ToggleTile(icon: Icons.blur_on, label: 'Approximate Location Only', value: _approxLocationOnly,
-            onChanged: (v) => setState(() => _approxLocationOnly = v)),
+            onChanged: (v) { setState(() => _approxLocationOnly = v); _savePrivacySettings(); }),
           _Tile(icon: Icons.visibility, label: 'SafeCheck Visibility',
             trailing: Text(
               _nearbyVisibility == 'all' ? 'Everyone'
@@ -265,6 +318,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             groupValue: _nearbyVisibility,
             onChanged: (val) {
               setState(() => _nearbyVisibility = val!);
+              _savePrivacySettings();
               Navigator.pop(context);
             },
             child: Column(mainAxisSize: MainAxisSize.min, children: [

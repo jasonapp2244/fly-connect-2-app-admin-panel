@@ -54,9 +54,9 @@ class FlyConnectApp extends StatelessWidget {
         ChangeNotifierProxyProvider<AuthProvider, GroupProvider>(
           create: (_) => GroupProvider(isMock: true),
           update: (_, auth, p) { p!.updateAuth(auth); return p; }),
-        ChangeNotifierProxyProvider<AuthProvider, MatchProvider>(
+        ChangeNotifierProxyProvider2<AuthProvider, UserProvider, MatchProvider>(
           create: (_) => MatchProvider(isMock: true),
-          update: (_, auth, p) { p!.updateAuth(auth); return p; }),
+          update: (_, auth, user, p) { p!.updateAuth(auth); p.updateUserProvider(user); return p; }),
         ChangeNotifierProxyProvider<AuthProvider, NotificationProvider>(
           create: (_) => NotificationProvider(isMock: true),
           update: (_, auth, p) { p!.updateAuth(auth); return p; }),
