@@ -1269,6 +1269,15 @@ class GroupProvider extends ChangeNotifier {
 
   bool isMember(String groupId) => _joined.contains(groupId);
 
+  Future<void> removeMember(String groupId, String memberUid) async {
+    if (isMock) { notifyListeners(); return; }
+    await _db.collection('groups').doc(groupId).update({
+      'members': FieldValue.arrayRemove([memberUid]),
+      'memberCount': FieldValue.increment(-1),
+    });
+    notifyListeners();
+  }
+
   void createGroup(GroupModel group) {
     if (isMock) { _groups.insert(0, group); _joined.add(group.id); notifyListeners(); return; }
     _db.collection('groups').doc().set(group.toFirestore());
@@ -1308,7 +1317,7 @@ class MatchProvider extends ChangeNotifier {
     _userProvider = userProvider;
   }
 
-  Future<void> loadCandidates() async {
+  Future<void> loadCandidates({String matchType = 'buddy'}) async {
     if (isMock) { _candidates = List.from(mockUsers); notifyListeners(); return; }
     if (_uid == null) return;
     _loading = true; notifyListeners();
@@ -1321,6 +1330,11 @@ class MatchProvider extends ChangeNotifier {
     }
     final snap = await query.limit(40).get();
     var results = snap.docs.map((d) => UserModel.fromFirestore(d)).where((u) => u.uid != _uid).toList();
+
+    // Filter by matchType preference — users whose matchType matches or is 'all'
+    if (matchType != 'all') {
+      results = results.where((u) => u.matchType == matchType || u.matchType == 'all').toList();
+    }
 
     // Apply client-side filters from match preferences
     if (prefs != null) {

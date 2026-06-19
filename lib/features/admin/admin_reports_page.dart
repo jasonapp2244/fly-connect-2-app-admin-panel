@@ -156,6 +156,87 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
     _fetchReports();
   }
 
+  void _viewTarget(Map<String, dynamic> report) {
+    final targetType = (report['type'] ?? 'unknown') as String;
+    final targetId = (report['targetId'] ?? '') as String;
+    if (targetId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('No target ID found on this report.'),
+        backgroundColor: AppColors.warning));
+      return;
+    }
+    // Show a dialog with target details and a link to view
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Report Target', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _detailRow('Type', targetType),
+          _detailRow('Target ID', targetId),
+          if (report['reporterId'] != null) _detailRow('Reporter ID', report['reporterId'] as String),
+          if (report['description'] != null && (report['description'] as String).isNotEmpty)
+            _detailRow('Description', report['description'] as String),
+        ]),
+        actions: [
+          if (targetType == 'user' || targetType == 'post' || targetType == 'group')
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                // Navigate to target in admin context
+                if (targetType == 'user') {
+                  // Show user details via admin users page
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('User ID: $targetId — check Admin > Users page'),
+                    duration: const Duration(seconds: 3)));
+                }
+              },
+              child: const Text('OK'),
+            )
+          else
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(width: 90, child: Text('$label:', style: const TextStyle(
+        fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.textSecondary))),
+      Expanded(child: SelectableText(value, style: const TextStyle(fontSize: 13))),
+    ]));
+
+  Future<void> _banReporter(Map<String, dynamic> report) async {
+    final reporterId = (report['reporterId'] ?? '') as String;
+    final reporterName = (report['reporterName'] ?? 'this reporter') as String;
+    if (reporterId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Reporter ID not found.'), backgroundColor: Colors.red));
+      return;
+    }
+    final confirmed = await _showConfirm(
+      context,
+      title: 'Ban Reporter',
+      message: 'Ban "$reporterName" for submitting a low-severity report? They will be unable to post or interact.',
+      confirmLabel: 'Ban',
+      confirmColor: AppColors.error,
+    );
+    if (!confirmed) return;
+    await FirebaseFirestore.instance.collection('users').doc(reporterId).update({'isBanned': true});
+    await logAdminAction(
+      action: 'ban_reporter',
+      targetType: 'user',
+      targetId: reporterId,
+      details: 'Banned reporter "$reporterName" from report ${report['id']}',
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$reporterName has been banned.'), backgroundColor: AppColors.error));
+    }
+  }
+
   Future<void> _dismissReport(String docId) async {
     final confirmed = await _showConfirm(
       context,
@@ -514,7 +595,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
                           width: 100,
                           height: 32,
                           child: OutlinedButton(
-                            onPressed: () {},
+                            onPressed: () => _viewTarget(r),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.blue,
                               side: const BorderSide(color: Colors.blue),
@@ -568,7 +649,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
                             width: 110,
                             height: 32,
                             child: OutlinedButton(
-                              onPressed: () {},
+                              onPressed: () => _banReporter(r),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: AppColors.error,
                                 side: const BorderSide(color: AppColors.error),

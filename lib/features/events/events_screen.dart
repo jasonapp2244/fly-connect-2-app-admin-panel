@@ -20,15 +20,33 @@ class EventsScreen extends StatefulWidget {
 class _EventsScreenState extends State<EventsScreen> with SingleTickerProviderStateMixin {
   bool _nearbyEnabled = false;
   late TabController _tabs;
+  int _selectedTab = 0;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 3, vsync: this);
+    _tabs.addListener(() {
+      if (!_tabs.indexIsChanging) {
+        setState(() => _selectedTab = _tabs.index);
+      }
+    });
   }
 
   @override
   void dispose() { _tabs.dispose(); super.dispose(); }
+
+  List<EventModel> _filterEvents(List<EventModel> events) {
+    switch (_selectedTab) {
+      case 1: // Upcoming — future events only
+        final now = DateTime.now();
+        return events.where((e) => e.date.isAfter(now)).toList();
+      case 2: // Featured
+        return events.where((e) => e.isFeatured).toList();
+      default: // All
+        return events;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +110,6 @@ class _EventsScreenState extends State<EventsScreen> with SingleTickerProviderSt
                   indicatorColor: AppColors.primary,
                   indicatorWeight: 3,
                   tabs: const [Tab(text: 'All'), Tab(text: 'Upcoming'), Tab(text: 'Featured')],
-                  onTap: (_) {},
                 )),
               const SizedBox(height: 16),
 
@@ -136,22 +153,28 @@ class _EventsScreenState extends State<EventsScreen> with SingleTickerProviderSt
                 child: SectionHeader(title: 'Upcoming Events', actionLabel: 'See All')),
               const SizedBox(height: 12),
 
-              if (events.isEmpty)
-                EmptyState(
-                  icon: Icons.event_outlined,
-                  title: 'No events yet',
-                  subtitle:
-                      'Check back soon, or start one yourself for your crew.',
-                  actionLabel: 'Create Event',
-                  onAction: () => context.push('/create-event'),
-                )
-              else
-                ListView.builder(
+              Builder(builder: (_) {
+                final filtered = _filterEvents(events);
+                if (filtered.isEmpty) {
+                  return EmptyState(
+                    icon: Icons.event_outlined,
+                    title: _selectedTab == 0 ? 'No events yet'
+                        : _selectedTab == 1 ? 'No upcoming events'
+                        : 'No featured events',
+                    subtitle: _selectedTab == 0
+                        ? 'Check back soon, or start one yourself for your crew.'
+                        : 'Check back later for more events.',
+                    actionLabel: _selectedTab == 0 ? 'Create Event' : null,
+                    onAction: _selectedTab == 0 ? () => context.push('/create-event') : null,
+                  );
+                }
+                return ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: events.length,
-                  itemBuilder: (_, i) => _EventListTile(event: events[i])),
+                  itemCount: filtered.length,
+                  itemBuilder: (_, i) => _EventListTile(event: filtered[i]));
+              }),
               const SizedBox(height: 24),
             ]),
           );

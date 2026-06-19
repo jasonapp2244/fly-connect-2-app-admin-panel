@@ -506,7 +506,7 @@ class _PostsGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<PostProvider>(
       builder: (context, provider, _) {
-        final posts = provider.feed;
+        final posts = provider.feed.where((p) => p.authorId == userId).toList();
         if (posts.isEmpty) {
           return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.grid_view_outlined, size: 48, color: Colors.grey.shade300),

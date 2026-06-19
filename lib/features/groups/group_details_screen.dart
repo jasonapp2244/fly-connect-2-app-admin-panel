@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -289,7 +290,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> with SingleTick
             ]),
           Expanded(child: TabBarView(controller: _tabs, children: [
             _PostsTab(posts: groupPosts),
-            _MembersTab(members: g.members),
+            _MembersTab(members: g.members, groupId: g.id),
             _EventsTab(groupId: g.id),
           ])),
         ]),
@@ -380,50 +381,75 @@ class _PostCard extends StatelessWidget {
 
 class _MembersTab extends StatefulWidget {
   final List<String> members;
-  const _MembersTab({required this.members});
+  final String groupId;
+  const _MembersTab({required this.members, required this.groupId});
   @override
   State<_MembersTab> createState() => _MembersTabState();
 }
 
 class _MembersTabState extends State<_MembersTab> {
-  late List<String> _members;
+  late List<String> _memberUids;
+  Map<String, UserModel> _memberUsers = {};
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _members = List.from(widget.members);
+    _memberUids = List.from(widget.members);
+    _fetchMemberProfiles();
   }
 
-  void _removeMember(String uid) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Remove Member'),
-        content: const Text('Remove this member from the group?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () {
-              setState(() => _members.remove(uid));
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Member removed'), duration: Duration(seconds: 2)));
-            },
-            child: const Text('Remove', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+  Future<void> _fetchMemberProfiles() async {
+    try {
+      final db = FirebaseFirestore.instance;
+      final futures = _memberUids.map((uid) => db.collection('users').doc(uid).get());
+      final docs = await Future.wait(futures);
+      final map = <String, UserModel>{};
+      for (final doc in docs) {
+        if (doc.exists) map[doc.id] = UserModel.fromFirestore(doc);
+      }
+      if (mounted) setState(() { _memberUsers = map; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _removeMember(String uid, String name) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Remove "$name"?',
+      message: 'This member will be removed from the group.',
+      confirmLabel: 'Remove',
+      isDestructive: true,
     );
+    if (!confirmed) return;
+    try {
+      await context.read<GroupProvider>().removeMember(widget.groupId, uid);
+      setState(() {
+        _memberUids.remove(uid);
+        _memberUsers.remove(uid);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$name removed'), duration: const Duration(seconds: 2)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not remove member.'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_members.isEmpty) {
+    if (_loading) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    if (_memberUids.isEmpty) {
       return const EmptyState(
-      icon: Icons.people_outline,
-      title: 'No members yet',
-      subtitle: 'Invite others to join this group.',
-    );
+        icon: Icons.people_outline,
+        title: 'No members yet',
+        subtitle: 'Invite others to join this group.',
+      );
     }
     return Column(children: [
       Container(
@@ -432,35 +458,43 @@ class _MembersTabState extends State<_MembersTab> {
         child: Row(children: [
           const Icon(Icons.people_outline, size: 16, color: AppColors.textSecondary),
           const SizedBox(width: 6),
-          Text('${_members.length} member${_members.length == 1 ? '' : 's'}',
+          Text('${_memberUids.length} member${_memberUids.length == 1 ? '' : 's'}',
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.textSecondary)),
         ]),
       ),
       Expanded(child: ListView.builder(
         padding: const EdgeInsets.all(12),
-        itemCount: _members.length,
+        itemCount: _memberUids.length,
         itemBuilder: (_, i) {
-          final uid = _members[i];
+          final uid = _memberUids[i];
+          final user = _memberUsers[uid];
+          final name = user?.name ?? uid;
+          final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
           return ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            leading: CircleAvatar(backgroundColor: AppColors.dark,
-              child: Text(uid.isNotEmpty ? uid[0].toUpperCase() : '?',
-                style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold))),
-            title: Text('Member ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(uid, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            leading: CircleAvatar(
+              backgroundColor: AppColors.dark,
+              backgroundImage: user?.photoUrl != null ? NetworkImage(user!.photoUrl!) : null,
+              child: user?.photoUrl == null ? Text(initial,
+                style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)) : null,
+            ),
+            title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              user != null ? '${user.airline ?? ''} ${user.position != null ? '· ${user.position}' : ''}'.trim() : uid,
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
             onTap: () => context.push('/users/$uid'),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton(
                 icon: const Icon(Icons.chat_bubble_outline, size: 18, color: AppColors.primary),
                 tooltip: 'Message member',
-                onPressed: () => context.push('/conversation/${uid}_dm?name=Member+${i + 1}'),
+                onPressed: () => context.push('/conversation/${uid}_dm?name=${Uri.encodeComponent(name)}'),
                 padding: EdgeInsets.zero, constraints: const BoxConstraints(),
               ),
               const SizedBox(width: 4),
               IconButton(
                 icon: Icon(Icons.remove_circle_outline, size: 18, color: Colors.red.shade300),
                 tooltip: 'Remove member',
-                onPressed: () => _removeMember(uid),
+                onPressed: () => _removeMember(uid, name),
                 padding: EdgeInsets.zero, constraints: const BoxConstraints(),
               ),
             ]),

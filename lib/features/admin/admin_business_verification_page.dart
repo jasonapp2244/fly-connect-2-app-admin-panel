@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
 import 'admin_audit_helper.dart';
 
@@ -16,6 +17,10 @@ class _AdminBusinessVerificationPageState
   List<Map<String, dynamic>> _businesses = [];
   String _filter = 'all';
   bool _loading = true;
+  static const int _pageSize = 50;
+  DocumentSnapshot? _lastDoc;
+  bool _hasMore = true;
+  bool _loadingMore = false;
 
   @override
   void initState() {
@@ -24,12 +29,12 @@ class _AdminBusinessVerificationPageState
   }
 
   Future<void> _fetchBusinesses() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _lastDoc = null; _hasMore = true; });
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: 'business')
-          .limit(100)
+          .limit(_pageSize)
           .get();
       if (!mounted) return;
       setState(() {
@@ -38,11 +43,41 @@ class _AdminBusinessVerificationPageState
           data['id'] = doc.id;
           return data;
         }).toList();
+        _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+        _hasMore = snapshot.docs.length == _pageSize;
       });
     } catch (e) {
       debugPrint('[AdminBusinessVerify] fetch failed: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _fetchMore() async {
+    if (_lastDoc == null || _loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'business')
+          .startAfterDocument(_lastDoc!)
+          .limit(_pageSize)
+          .get();
+      if (!mounted) return;
+      final newDocs = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+      setState(() {
+        _businesses.addAll(newDocs);
+        _lastDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : _lastDoc;
+        _hasMore = snapshot.docs.length == _pageSize;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('[AdminBusinessVerify] fetchMore failed: $e');
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
@@ -108,6 +143,62 @@ class _AdminBusinessVerificationPageState
       targetType: 'business',
       targetId: id,
       details: 'Rejected verification for "$name"',
+    );
+    _fetchBusinesses();
+  }
+
+  Future<void> _requestMoreInfo(String id, String name) async {
+    final noteCtrl = TextEditingController(text: 'Please upload additional verification documents.');
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Request More Info', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Send a request to "$name" for additional information.',
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: noteCtrl,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Note to business...',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              contentPadding: const EdgeInsets.all(12),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.warning, foregroundColor: Colors.white,
+              elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Send Request')),
+        ],
+      ),
+    );
+    if (submitted != true) return;
+    await FirebaseFirestore.instance.collection('users').doc(id).update({
+      'verificationStatus': 'info_requested',
+      'verificationNote': noteCtrl.text.trim(),
+    });
+    // Send notification to the business user
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'userId': id,
+      'type': 'verification',
+      'title': 'More info needed',
+      'body': noteCtrl.text.trim(),
+      'isRead': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    await logAdminAction(
+      action: 'request_more_info',
+      targetType: 'business',
+      targetId: id,
+      details: 'Requested more info from "$name": ${noteCtrl.text.trim()}',
     );
     _fetchBusinesses();
   }
@@ -213,6 +304,24 @@ class _AdminBusinessVerificationPageState
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _buildBusinessCard(b),
                 )),
+          const SizedBox(height: 16),
+          if (_hasMore)
+            Center(child: SizedBox(
+              height: 36,
+              child: ElevatedButton.icon(
+                onPressed: _loadingMore ? null : _fetchMore,
+                icon: _loadingMore
+                    ? const SizedBox(width: 14, height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.expand_more, size: 16),
+                label: Text(_loadingMore ? 'Loading...' : 'Load more',
+                    style: const TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.dark, foregroundColor: Colors.white,
+                  elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+              ),
+            )),
         ],
       ),
     );
@@ -365,8 +474,12 @@ class _AdminBusinessVerificationPageState
                         if (licenseNumber.isNotEmpty)
                           _infoRow(
                               Icons.badge_outlined, 'License: $licenseNumber'),
-                        _infoRow(Icons.folder_outlined,
-                            '${docs.length} document${docs.length == 1 ? '' : 's'}'),
+                        GestureDetector(
+                          onTap: docs.isNotEmpty ? () => _showDocuments(docs, name) : null,
+                          child: _infoRow(
+                            docs.isNotEmpty ? Icons.folder_open : Icons.folder_outlined,
+                            '${docs.length} document${docs.length == 1 ? '' : 's'}${docs.isNotEmpty ? ' (tap to view)' : ''}'),
+                        ),
                       ],
                     ),
                     if (docs.isEmpty) ...[
@@ -435,7 +548,7 @@ class _AdminBusinessVerificationPageState
                           width: 140,
                           height: 32,
                           child: OutlinedButton(
-                            onPressed: () {},
+                            onPressed: () => _requestMoreInfo(id, name),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppColors.warning,
                               side: const BorderSide(color: AppColors.warning),
@@ -456,6 +569,44 @@ class _AdminBusinessVerificationPageState
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDocuments(List docs, String businessName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Documents — $businessName',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: SizedBox(
+          width: 400,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ...docs.asMap().entries.map((entry) {
+              final url = entry.value.toString();
+              return ListTile(
+                leading: const Icon(Icons.description_outlined, color: AppColors.dark),
+                title: Text('Document ${entry.key + 1}',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                subtitle: SelectableText(url,
+                  style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.open_in_new, size: 18, color: Colors.blue),
+                  onPressed: () async {
+                    final uri = Uri.tryParse(url);
+                    if (uri != null && await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                ),
+              );
+            }),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
       ),
     );
   }

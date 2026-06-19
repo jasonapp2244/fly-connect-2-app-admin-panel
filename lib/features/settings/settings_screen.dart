@@ -10,6 +10,7 @@ import '../../core/constants/app_routes.dart';
 import '../../shared/widgets/confirm_dialog.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../../shared/providers/user_provider.dart';
+import '../../shared/providers/post_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -421,17 +422,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _blockedUsersSheet(BuildContext context) {
+    final uid = context.read<AuthProvider>().currentUser?.uid;
     showModalBottomSheet(context: context, isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => DraggableScrollableSheet(initialChildSize: 0.6, maxChildSize: 0.9, minChildSize: 0.3,
         expand: false,
-        builder: (_, ctrl) => Column(children: [
+        builder: (sheetCtx, ctrl) => Column(children: [
           const Padding(padding: EdgeInsets.all(16),
             child: Text('Blocked Users', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
-          Expanded(child: ListView(controller: ctrl,
-            children: const [Center(child: Padding(padding: EdgeInsets.all(32),
-              child: Text('No blocked users', style: TextStyle(color: Colors.grey))))])),
+          Expanded(child: uid == null
+            ? const Center(child: Text('Not signed in', style: TextStyle(color: Colors.grey)))
+            : FutureBuilder<List<Map<String, dynamic>>>(
+                future: _fetchBlockedUsers(uid),
+                builder: (ctx, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                  }
+                  final blocked = snap.data ?? [];
+                  if (blocked.isEmpty) {
+                    return const Center(child: Padding(padding: EdgeInsets.all(32),
+                      child: Text('No blocked users', style: TextStyle(color: Colors.grey))));
+                  }
+                  return ListView.builder(
+                    controller: ctrl,
+                    itemCount: blocked.length,
+                    itemBuilder: (_, i) {
+                      final user = blocked[i];
+                      final name = user['name'] as String? ?? 'Unknown';
+                      final photo = user['photoUrl'] as String?;
+                      final blockedUid = user['uid'] as String;
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.dark,
+                          backgroundImage: photo != null ? NetworkImage(photo) : null,
+                          child: photo == null ? Text(name.isNotEmpty ? name[0] : '?',
+                            style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)) : null,
+                        ),
+                        title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        trailing: TextButton(
+                          onPressed: () async {
+                            await context.read<PostProvider>().unblockUser(blockedUid);
+                            if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text('$name unblocked'), backgroundColor: Colors.green));
+                            }
+                          },
+                          child: const Text('Unblock', style: TextStyle(color: Colors.red, fontSize: 13)),
+                        ),
+                      );
+                    },
+                  );
+                },
+              )),
         ])));
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchBlockedUsers(String uid) async {
+    try {
+      final blockedSnap = await FirebaseFirestore.instance
+          .collection('users').doc(uid)
+          .collection('blocked').limit(50).get();
+      if (blockedSnap.docs.isEmpty) return [];
+      final futures = blockedSnap.docs.map((d) =>
+          FirebaseFirestore.instance.collection('users').doc(d.id).get());
+      final userDocs = await Future.wait(futures);
+      return userDocs.where((d) => d.exists).map((d) {
+        final data = d.data()!;
+        data['uid'] = d.id;
+        return data;
+      }).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   void _showInfoSheet(BuildContext context, String title, String message) {

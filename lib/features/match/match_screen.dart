@@ -29,7 +29,7 @@ class _MatchScreenState extends State<MatchScreen> with SingleTickerProviderStat
     _slideAnim = Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
         .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MatchProvider>().loadCandidates();
+      context.read<MatchProvider>().loadCandidates(matchType: _matchType);
     });
   }
 
@@ -80,11 +80,11 @@ class _MatchScreenState extends State<MatchScreen> with SingleTickerProviderStat
             padding: const EdgeInsets.all(4),
             child: Row(children: [
               _TypeTab(label: '✈️  Buddy', value: 'buddy', current: _matchType,
-                onTap: (v) { setState(() => _matchType = v); context.read<MatchProvider>().loadCandidates(); }),
+                onTap: (v) { setState(() => _matchType = v); context.read<MatchProvider>().loadCandidates(matchType: v); }),
               _TypeTab(label: '💑  Dating', value: 'dating', current: _matchType,
-                onTap: (v) { setState(() => _matchType = v); context.read<MatchProvider>().loadCandidates(); }),
+                onTap: (v) { setState(() => _matchType = v); context.read<MatchProvider>().loadCandidates(matchType: v); }),
               _TypeTab(label: '🎒  Solo', value: 'solo', current: _matchType,
-                onTap: (v) { setState(() => _matchType = v); context.read<MatchProvider>().loadCandidates(); }),
+                onTap: (v) { setState(() => _matchType = v); context.read<MatchProvider>().loadCandidates(matchType: v); }),
             ]),
           ),
         ])),
