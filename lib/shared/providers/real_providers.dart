@@ -1107,6 +1107,31 @@ class ChatProvider extends ChangeNotifier {
             s.docs.map((d) => MapEntry(d.id, d.data()['isTyping'] as bool? ?? false))));
   }
 
+  Future<void> muteChat(String chatId, bool muted) async {
+    if (isMock || _uid == null) return;
+    await _db.collection('chats').doc(chatId).update({
+      'mutedBy.$_uid': muted,
+    });
+  }
+
+  Future<void> clearConversation(String chatId) async {
+    if (isMock) return;
+    // Delete all messages in the chat subcollection (batch deletes)
+    final msgSnap = await _db.collection('chats').doc(chatId)
+        .collection('messages').limit(500).get();
+    if (msgSnap.docs.isEmpty) return;
+    final batch = _db.batch();
+    for (final doc in msgSnap.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
+    // Reset lastMessage on the chat doc
+    await _db.collection('chats').doc(chatId).update({
+      'lastMessage': '', 'lastMessageAt': FieldValue.serverTimestamp(),
+    });
+    notifyListeners();
+  }
+
   @override
   void dispose() { _chatsSub?.cancel(); super.dispose(); }
 }

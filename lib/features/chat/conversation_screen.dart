@@ -1,12 +1,16 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../core/constants/app_colors.dart';
 import '../../shared/providers/chat_provider.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../../shared/providers/post_provider.dart';
 import '../../shared/models/models.dart';
+import '../../shared/utils/image_compress.dart';
 
 class ConversationScreen extends StatefulWidget {
   final String chatId;
@@ -21,6 +25,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   final TextEditingController _ctrl = TextEditingController();
   final ScrollController _scroll = ScrollController();
   bool _sending = false;
+  bool _muted = false;
 
   @override
   void initState() {
@@ -63,27 +68,43 @@ class _ConversationScreenState extends State<ConversationScreen> {
       builder: (_) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
-            leading: const Icon(Icons.notifications_off_outlined),
-            title: const Text('Mute notifications'),
-            subtitle: const Text('Coming soon', style: TextStyle(fontSize: 11)),
+            leading: Icon(_muted ? Icons.notifications_active_outlined : Icons.notifications_off_outlined),
+            title: Text(_muted ? 'Unmute notifications' : 'Mute notifications'),
             onTap: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('Muting is not yet available in this build.'),
-                duration: Duration(seconds: 2),
-              ));
+              setState(() => _muted = !_muted);
+              context.read<ChatProvider>().muteChat(widget.chatId, _muted);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(_muted ? 'Conversation muted' : 'Conversation unmuted'),
+                duration: const Duration(seconds: 2)));
             },
           ),
           ListTile(
             leading: const Icon(Icons.delete_outline, color: Colors.red),
             title: const Text('Clear conversation',
                 style: TextStyle(color: Colors.red)),
-            onTap: () {
+            onTap: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('Clear conversation is not yet available'),
-                duration: Duration(seconds: 2),
-              ));
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  title: const Text('Clear conversation?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  content: const Text('This will delete all messages in this conversation for you. This cannot be undone.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                    TextButton(onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Clear', style: TextStyle(color: Colors.red))),
+                  ],
+                ),
+              );
+              if (confirmed == true && mounted) {
+                await context.read<ChatProvider>().clearConversation(widget.chatId);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Conversation cleared'), duration: Duration(seconds: 2)));
+                }
+              }
             },
           ),
           ListTile(
@@ -164,13 +185,28 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _pickImage() async {
-    // Image uploads are not yet wired to Firebase Storage.
-    // Show a clear message rather than silently dropping the picked image.
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Image messages are coming soon. You can send text for now.'),
-      duration: Duration(seconds: 2),
-    ));
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (picked == null || !mounted) return;
+    setState(() => _sending = true);
+    try {
+      final Uint8List bytes = await picked.readAsBytes();
+      final compressed = await compressForUpload(bytes, maxDimension: 1200);
+      final uid = context.read<AuthProvider>().currentUser?.uid ?? 'unknown';
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final ref = FirebaseStorage.instance.ref('user_uploads/$uid/chat/$ts.png');
+      await ref.putData(compressed, SettableMetadata(contentType: 'image/png'));
+      final url = await ref.getDownloadURL();
+      if (!mounted) return;
+      await context.read<ChatProvider>().sendMessage(widget.chatId, url, mediaType: 'image');
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image send failed: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   @override
@@ -250,11 +286,19 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                         if (!isMe && widget.isGroup) Text(m.senderName,
-                          // Sender label sits on Colors.grey.shade100 (≈ white)
-                          // for incoming bubbles — primary fails contrast there.
-                          // AppColors.dark gives 13.6:1 and reads clearly.
                           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.dark)),
-                        Text(m.text, style: TextStyle(color: isMe ? AppColors.dark : Colors.black87, fontSize: 15)),
+                        if (m.mediaType == 'image')
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(m.text, width: 200, fit: BoxFit.cover,
+                              loadingBuilder: (_, child, progress) => progress == null ? child
+                                : const SizedBox(width: 200, height: 150, child: Center(
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))),
+                              errorBuilder: (_, __, ___) => Container(width: 200, height: 100,
+                                color: AppColors.backgroundGrey,
+                                child: const Center(child: Icon(Icons.broken_image, color: Colors.grey)))))
+                        else
+                          Text(m.text, style: TextStyle(color: isMe ? AppColors.dark : Colors.black87, fontSize: 15)),
                         const SizedBox(height: 2),
                         Row(mainAxisSize: MainAxisSize.min, children: [
                           Text(timeago.format(m.createdAt, allowFromNow: true),

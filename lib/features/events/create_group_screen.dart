@@ -1,11 +1,15 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../shared/providers/group_provider.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../../shared/models/models.dart';
+import '../../shared/utils/image_compress.dart';
 
 class CreateGroupScreen extends StatefulWidget {
   const CreateGroupScreen({super.key});
@@ -18,6 +22,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final _descCtrl = TextEditingController();
   final _tagsCtrl = TextEditingController();
   bool _loading = false;
+  Uint8List? _coverImageBytes;
+  String? _coverImageUrl;
 
   @override
   void dispose() {
@@ -42,6 +48,18 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       return;
     }
     setState(() => _loading = true);
+
+    // Upload cover image if picked
+    if (_coverImageBytes != null) {
+      try {
+        final compressed = await compressForUpload(_coverImageBytes!, maxDimension: 1600);
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        final ref = FirebaseStorage.instance.ref('user_uploads/${user.uid}/groups/$ts.png');
+        await ref.putData(compressed, SettableMetadata(contentType: 'image/png'));
+        _coverImageUrl = await ref.getDownloadURL();
+      } catch (_) {}
+    }
+
     final tagsRaw = _tagsCtrl.text.trim();
     final tags = tagsRaw.isEmpty
         ? <String>[]
@@ -55,6 +73,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       tags: tags,
       members: [user.uid],
       isPinned: false,
+      imageUrl: _coverImageUrl,
       createdAt: DateTime.now(),
     );
     // ignore: use_build_context_synchronously
@@ -84,19 +103,33 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Cover image placeholder
-          Container(
-            height: 160, width: double.infinity,
-            decoration: BoxDecoration(
-              color: AppColors.backgroundGrey,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
+          // Cover image picker
+          GestureDetector(
+            onTap: () async {
+              final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
+              if (picked != null) {
+                final bytes = await picked.readAsBytes();
+                setState(() => _coverImageBytes = bytes);
+              }
+            },
+            child: Container(
+              height: 160, width: double.infinity,
+              decoration: BoxDecoration(
+                color: AppColors.backgroundGrey,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: _coverImageBytes != null
+                    ? Image.memory(_coverImageBytes!, fit: BoxFit.cover, width: double.infinity)
+                    : const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.add_photo_alternate_outlined, size: 40, color: AppColors.textSecondary),
+                        SizedBox(height: 6),
+                        Text('Add Cover Photo', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      ])),
+              ),
             ),
-            child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.add_photo_alternate_outlined, size: 40, color: AppColors.textSecondary),
-              SizedBox(height: 6),
-              Text('Add Cover Photo', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            ])),
           ),
           const SizedBox(height: 20),
 

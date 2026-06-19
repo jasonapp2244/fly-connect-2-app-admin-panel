@@ -71,11 +71,18 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => _checking = true);
     // Reload to pick up the latest emailVerified state from Firebase
     await user.reload();
+    final refreshedUser = FirebaseAuth.instance.currentUser;
     if (!mounted) return;
     setState(() => _checking = false);
-    // Allow entry regardless of verification status — email verified is
-    // confirmed in the background. Users can verify later from Settings.
-    context.go(AppRoutes.home);
+    if (refreshedUser != null && refreshedUser.emailVerified) {
+      context.go(AppRoutes.home);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Email not yet verified. Please check your inbox and tap the verification link.'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 4),
+      ));
+    }
   }
 
   @override

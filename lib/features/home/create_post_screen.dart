@@ -1,11 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../shared/providers/providers.dart';
+import '../../shared/providers/auth_provider.dart';
 import '../../shared/providers/group_provider.dart';
+import '../../shared/models/models.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -20,6 +23,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   String _audience = 'Everyone';
   String? _selectedGroupId;
   String? _selectedGroupName;
+  final List<String> _taggedUserNames = [];
   bool _loading = false;
 
   Future<void> _pickFromGallery() async {
@@ -72,6 +76,102 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         behavior: SnackBarBehavior.floating,
       ));
     }
+  }
+
+  void _showTagPicker() {
+    final searchCtrl = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6, maxChildSize: 0.9, minChildSize: 0.3,
+        expand: false,
+        builder: (_, ctrl) => Column(children: [
+          const SizedBox(height: 12),
+          Container(width: 40, height: 4, decoration: BoxDecoration(
+            color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 16),
+          const Text('Tag Crew Members', style: AppTextStyles.h4),
+          const SizedBox(height: 8),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search by name...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300)),
+              ),
+              onChanged: (_) => (ctx as Element).markNeedsBuild(),
+            )),
+          const SizedBox(height: 8),
+          if (_taggedUserNames.isNotEmpty)
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Wrap(spacing: 6, runSpacing: 6, children: _taggedUserNames.map((name) =>
+                Chip(label: Text(name, style: const TextStyle(fontSize: 12)),
+                  deleteIcon: const Icon(Icons.close, size: 16),
+                  onDeleted: () { setState(() => _taggedUserNames.remove(name)); Navigator.pop(ctx); _showTagPicker(); },
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.2),
+                )).toList())),
+          Expanded(child: FutureBuilder<QuerySnapshot>(
+            future: FirebaseFirestore.instance.collection('users')
+                .where('role', isEqualTo: 'user').limit(30).get(),
+            builder: (_, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+              }
+              final users = (snap.data?.docs ?? [])
+                  .map((d) => UserModel.fromFirestore(d))
+                  .where((u) => u.uid != context.read<AuthProvider>().currentUser?.uid)
+                  .where((u) {
+                    final q = searchCtrl.text.toLowerCase();
+                    return q.isEmpty || u.name.toLowerCase().contains(q);
+                  }).toList();
+              return ListView.builder(
+                controller: ctrl,
+                itemCount: users.length,
+                itemBuilder: (_, i) {
+                  final u = users[i];
+                  final tagged = _taggedUserNames.contains(u.name);
+                  return ListTile(
+                    leading: CircleAvatar(backgroundColor: AppColors.dark,
+                      backgroundImage: u.photoUrl != null ? NetworkImage(u.photoUrl!) : null,
+                      child: u.photoUrl == null ? Text(u.name.isNotEmpty ? u.name[0] : '?',
+                        style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)) : null),
+                    title: Text(u.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text('${u.airline ?? ''} · ${u.position ?? ''}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    trailing: Icon(tagged ? Icons.check_circle : Icons.circle_outlined,
+                      color: tagged ? AppColors.primary : Colors.grey),
+                    onTap: () {
+                      setState(() {
+                        if (tagged) { _taggedUserNames.remove(u.name); }
+                        else { _taggedUserNames.add(u.name); }
+                      });
+                      Navigator.pop(ctx);
+                      _showTagPicker();
+                    },
+                  );
+                });
+            },
+          )),
+          Padding(padding: const EdgeInsets.all(16),
+            child: SizedBox(width: double.infinity, child: ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary, foregroundColor: AppColors.dark,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+              child: Text('Done (${_taggedUserNames.length} tagged)',
+                style: const TextStyle(fontWeight: FontWeight.bold))))),
+        ]),
+      ),
+    );
   }
 
   void _showGroupPicker() {
@@ -370,8 +470,13 @@ final user = context.watch<AuthProvider>().currentUser;
                       icon: Icons.person_add_outlined,
                       trailing: const Icon(Icons.chevron_right,
                           color: AppColors.textSecondary, size: 20),
-                      child: Text('Tag crew members',
-                          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.dark)),
+                      onTap: _showTagPicker,
+                      child: Text(
+                          _taggedUserNames.isEmpty
+                              ? 'Tag crew members'
+                              : 'Tagged: ${_taggedUserNames.join(", ")}',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: _taggedUserNames.isNotEmpty ? AppColors.dark : AppColors.textSecondary)),
                     ),
                     const Divider(height: 1, color: AppColors.backgroundGrey),
                     _DetailRow(

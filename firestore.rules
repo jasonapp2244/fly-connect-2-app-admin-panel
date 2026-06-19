@@ -237,6 +237,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── Stories (24h ephemeral, like Instagram) ─────────────────
+    match /stories/{storyId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && isNotBanned()
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
     // ── App Config (version check, feature flags) ─────────────
     match /config/{docId} {
       allow read: if true; // public — version check must work pre-auth

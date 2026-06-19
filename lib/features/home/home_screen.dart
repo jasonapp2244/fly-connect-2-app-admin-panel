@@ -243,40 +243,63 @@ class _StoriesRow extends StatefulWidget {
 class _StoriesRowState extends State<_StoriesRow> {
   Uint8List? _myStoryBytes;
 
+  @override
+  void initState() {
+    super.initState();
+    _myStoryBytes = StoryState.instance.myStoryBytes;
+    StoryState.instance.loadStories();
+  }
+
   Future<void> _pickMyStory() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
       final bytes = await picked.readAsBytes();
-      StoryState.instance.myStoryBytes = bytes;
+      final currentUser = context.read<AuthProvider>().currentUser;
+      if (currentUser != null) {
+        await StoryState.instance.postStory(bytes, currentUser);
+      } else {
+        StoryState.instance.myStoryBytes = bytes;
+      }
       setState(() => _myStoryBytes = bytes);
     }
   }
 
   void _viewMyStory() {
-    if (_myStoryBytes == null) return;
+    if (_myStoryBytes == null && StoryState.instance.myStory == null) return;
     final currentUser = context.read<AuthProvider>().currentUser;
     if (currentUser == null) return;
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => StoryViewerScreen(
         user: currentUser,
         imageBytes: _myStoryBytes,
+        storyImageUrl: StoryState.instance.myStory?.imageUrl ?? '',
         isOwn: true,
       ),
     )).then((_) => setState(() => _myStoryBytes = StoryState.instance.myStoryBytes));
   }
 
+  void _viewStory(StoryItem story) {
+    final user = UserModel(
+      uid: story.userId, name: story.userName, email: '',
+      photoUrl: story.userPhotoUrl, createdAt: story.createdAt,
+    );
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => StoryViewerScreen(user: user, storyImageUrl: story.imageUrl),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Only "Your Story" is shown until a backend-backed stories feature ships.
-    // We intentionally no longer render fake stories for other users.
-    final hasStory = _myStoryBytes != null;
+    final hasStory = _myStoryBytes != null || StoryState.instance.myStory != null;
+    final otherStories = StoryState.instance.otherStories;
     return SizedBox(
       height: 104,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
+          // My Story
           Padding(
             padding: const EdgeInsets.only(right: 14),
             child: GestureDetector(
@@ -291,14 +314,15 @@ class _StoriesRowState extends State<_StoriesRow> {
                       color: AppColors.backgroundGrey,
                     ),
                     child: ClipOval(
-                      child: hasStory
+                      child: hasStory && _myStoryBytes != null
                           ? Image.memory(_myStoryBytes!, fit: BoxFit.cover)
-                          : const Icon(Icons.person, color: AppColors.textSecondary, size: 28),
+                          : hasStory && StoryState.instance.myStory != null
+                            ? Image.network(StoryState.instance.myStory!.imageUrl, fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(Icons.person, color: AppColors.textSecondary, size: 28))
+                            : const Icon(Icons.person, color: AppColors.textSecondary, size: 28),
                     ),
                   ),
                   if (!hasStory)
-                    // "Add story" affordance — UI control, needs 3:1 vs the
-                    // grey/white surrounding background. Flip to dark.
                     Positioned(bottom: 0, right: 0,
                       child: Container(width: 20, height: 20,
                         decoration: BoxDecoration(color: AppColors.dark, shape: BoxShape.circle,
@@ -310,7 +334,36 @@ class _StoriesRowState extends State<_StoriesRow> {
               ]),
             ),
           ),
-          // Link to nearby users as a lightweight "discover" shortcut
+          // Other users' stories
+          ...otherStories.map((story) => Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: GestureDetector(
+              onTap: () => _viewStory(story),
+              child: Column(children: [
+                Container(
+                  width: 56, height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.primary, width: 2.5),
+                  ),
+                  child: ClipOval(
+                    child: story.userPhotoUrl != null
+                        ? Image.network(story.userPhotoUrl!, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => CircleAvatar(backgroundColor: AppColors.dark,
+                              child: Text(story.userName.isNotEmpty ? story.userName[0] : '?',
+                                style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold))))
+                        : CircleAvatar(backgroundColor: AppColors.dark,
+                            child: Text(story.userName.isNotEmpty ? story.userName[0] : '?',
+                              style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold))),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SizedBox(width: 56, child: Text(story.userName.split(' ').first,
+                  style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center)),
+              ]),
+            ),
+          )),
+          // Link to nearby users
           Padding(
             padding: const EdgeInsets.only(right: 14),
             child: GestureDetector(
@@ -326,16 +379,12 @@ class _StoriesRowState extends State<_StoriesRow> {
                     padding: EdgeInsets.all(2),
                     child: CircleAvatar(
                       backgroundColor: AppColors.dark,
-                      child: Icon(Icons.people_alt_outlined,
-                          color: AppColors.primary, size: 22),
+                      child: Icon(Icons.people_alt_outlined, color: AppColors.primary, size: 22),
                     ),
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text('Nearby',
-                    style: AppTextStyles.caption,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
+                const Text('Nearby', style: AppTextStyles.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
               ]),
             ),
           ),

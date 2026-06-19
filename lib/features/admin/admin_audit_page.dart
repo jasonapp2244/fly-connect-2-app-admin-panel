@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/constants/app_colors.dart';
 
@@ -103,6 +105,34 @@ class _AdminAuditPageState extends State<AdminAuditPage> {
     }
   }
 
+  void _exportCsv() {
+    final rows = <String>['Timestamp,Admin,Action,Target Type,Target ID,Details'];
+    for (final e in _filteredEntries) {
+      final ts = e['timestamp'];
+      String tsStr = '';
+      if (ts is Timestamp) tsStr = ts.toDate().toIso8601String();
+      final admin = _csvEscape((e['adminName'] ?? '') as String);
+      final action = _csvEscape((e['action'] ?? '') as String);
+      final targetType = _csvEscape((e['targetType'] ?? '') as String);
+      final targetId = _csvEscape((e['targetId'] ?? '') as String);
+      final details = _csvEscape((e['details'] ?? '') as String);
+      rows.add('$tsStr,$admin,$action,$targetType,$targetId,$details');
+    }
+    final csv = rows.join('\n');
+    Clipboard.setData(ClipboardData(text: csv));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('${_filteredEntries.length} audit entries copied as CSV'),
+      backgroundColor: AppColors.online,
+      duration: const Duration(seconds: 3)));
+  }
+
+  String _csvEscape(String value) {
+    if (value.contains(',') || value.contains('"') || value.contains('\n')) {
+      return '"${value.replaceAll('"', '""')}"';
+    }
+    return value;
+  }
+
   List<Map<String, dynamic>> get _filteredEntries {
     if (_filter == 'all') return _entries;
     return _entries
@@ -194,7 +224,7 @@ class _AdminAuditPageState extends State<AdminAuditPage> {
                 width: 110,
                 height: 32,
                 child: ElevatedButton.icon(
-                  onPressed: () {},
+                  onPressed: _exportCsv,
                   icon: const Icon(Icons.download, size: 14),
                   label: const Text('Export CSV'),
                   style: ElevatedButton.styleFrom(

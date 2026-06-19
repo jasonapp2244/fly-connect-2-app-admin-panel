@@ -1,12 +1,16 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
 import '../../shared/providers/event_provider.dart';
 import '../../shared/providers/auth_provider.dart';
 import '../../shared/models/models.dart';
+import '../../shared/utils/image_compress.dart';
 
 class CreateEventScreen extends StatefulWidget {
   const CreateEventScreen({super.key});
@@ -22,6 +26,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   DateTime _date = DateTime.now().add(const Duration(days: 7));
   TimeOfDay _time = const TimeOfDay(hour: 18, minute: 0);
   bool _loading = false;
+  Uint8List? _coverImageBytes;
+  String? _coverImageUrl;
 
   @override
   void dispose() {
@@ -62,6 +68,20 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       return;
     }
     setState(() => _loading = true);
+
+    // Upload cover image if picked
+    if (_coverImageBytes != null) {
+      try {
+        final compressed = await compressForUpload(_coverImageBytes!, maxDimension: 1600);
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        final ref = FirebaseStorage.instance.ref('user_uploads/${user.uid}/events/$ts.png');
+        await ref.putData(compressed, SettableMetadata(contentType: 'image/png'));
+        _coverImageUrl = await ref.getDownloadURL();
+      } catch (_) {
+        // Non-fatal — create event without cover
+      }
+    }
+
     final req = _requirementsCtrl.text.trim();
     final newEvent = EventModel(
       id: 'evt_${DateTime.now().millisecondsSinceEpoch}',
@@ -74,6 +94,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       rsvpCount: 0,
       requirements: req.isEmpty ? [] : req.split(',').map((r) => r.trim()).where((r) => r.isNotEmpty).toList(),
       isFeatured: false,
+      imageUrl: _coverImageUrl,
       createdAt: DateTime.now(),
     );
     // ignore: use_build_context_synchronously
@@ -104,19 +125,33 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Cover placeholder
-          Container(
-            height: 160, width: double.infinity,
-            decoration: BoxDecoration(
-              color: AppColors.backgroundGrey,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
+          // Cover image picker
+          GestureDetector(
+            onTap: () async {
+              final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
+              if (picked != null) {
+                final bytes = await picked.readAsBytes();
+                setState(() => _coverImageBytes = bytes);
+              }
+            },
+            child: Container(
+              height: 160, width: double.infinity,
+              decoration: BoxDecoration(
+                color: AppColors.backgroundGrey,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: _coverImageBytes != null
+                    ? Image.memory(_coverImageBytes!, fit: BoxFit.cover, width: double.infinity)
+                    : const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.add_photo_alternate_outlined, size: 40, color: AppColors.textSecondary),
+                        SizedBox(height: 6),
+                        Text('Add Cover Image', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      ])),
+              ),
             ),
-            child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.add_photo_alternate_outlined, size: 40, color: AppColors.textSecondary),
-              SizedBox(height: 6),
-              Text('Add Cover Image', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            ])),
           ),
           const SizedBox(height: 20),
 
