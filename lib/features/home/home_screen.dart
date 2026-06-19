@@ -613,8 +613,7 @@ class _PostCardState extends State<_PostCard> {
   }
 
   void _openPost() {
-    Navigator.push(context,
-      MaterialPageRoute(builder: (_) => PostDetailsScreen(post: widget.post)));
+    context.push('/posts/${widget.post.id}');
   }
 
   void _copyPostLink() {

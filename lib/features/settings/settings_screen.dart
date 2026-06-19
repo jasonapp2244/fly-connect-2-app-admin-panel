@@ -120,9 +120,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _Tile(icon: Icons.lock_outline, label: 'Change Password',
             onTap: () => _changePasswordSheet(context)),
           _Tile(icon: Icons.phone_outlined, label: 'Phone Number',
-            onTap: () => _showInfoSheet(context, 'Update Phone', 'Coming soon')),
+            onTap: () => _updatePhoneSheet(context)),
           _Tile(icon: Icons.email_outlined, label: 'Email Address',
-            onTap: () => _showInfoSheet(context, 'Update Email', 'Coming soon')),
+            onTap: () => _updateEmailSheet(context)),
         ]),
         _Section(title: 'Notifications', children: [
           _ToggleTile(icon: Icons.favorite_outline, label: 'Likes', value: _pushLikes,
@@ -303,6 +303,89 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             },
             child: const Text('Update Password', style: TextStyle(fontWeight: FontWeight.bold)))),
+        ])));
+  }
+
+  void _updatePhoneSheet(BuildContext context) {
+    final phoneCtrl = TextEditingController(
+      text: context.read<AuthProvider>().currentUser?.phone ?? '');
+    showModalBottomSheet(context: context, isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Update Phone', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          TextField(controller: phoneCtrl, keyboardType: TextInputType.phone,
+            decoration: _inputDec('Phone number')),
+          const SizedBox(height: 20),
+          SizedBox(width: double.infinity, child: ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: AppColors.dark,
+              padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+            onPressed: () async {
+              final uid = context.read<AuthProvider>().currentUser?.uid;
+              if (uid == null) return;
+              await context.read<UserProvider>().updateProfile(uid, {'phone': phoneCtrl.text.trim()});
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Phone number updated'), backgroundColor: Colors.green));
+              }
+            },
+            child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold)))),
+        ])));
+  }
+
+  void _updateEmailSheet(BuildContext context) {
+    final emailCtrl = TextEditingController();
+    final passwordCtrl = TextEditingController();
+    showModalBottomSheet(context: context, isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Update Email', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text('You will need to verify the new email address.',
+            style: TextStyle(color: Colors.grey, fontSize: 13)),
+          const SizedBox(height: 20),
+          TextField(controller: emailCtrl, keyboardType: TextInputType.emailAddress,
+            decoration: _inputDec('New email address')),
+          const SizedBox(height: 12),
+          TextField(controller: passwordCtrl, obscureText: true,
+            decoration: _inputDec('Current password (required)')),
+          const SizedBox(height: 20),
+          SizedBox(width: double.infinity, child: ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: AppColors.dark,
+              padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+            onPressed: () async {
+              final newEmail = emailCtrl.text.trim();
+              final password = passwordCtrl.text;
+              if (newEmail.isEmpty || password.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Please fill in all fields'), backgroundColor: Colors.red));
+                return;
+              }
+              final user = FirebaseAuth.instance.currentUser;
+              if (user == null || user.email == null) return;
+              try {
+                final cred = EmailAuthProvider.credential(email: user.email!, password: password);
+                await user.reauthenticateWithCredential(cred);
+                await user.verifyBeforeUpdateEmail(newEmail);
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Verification email sent to new address. Please confirm to complete the change.'),
+                    backgroundColor: Colors.green, duration: Duration(seconds: 4)));
+                }
+              } on FirebaseAuthException catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(e.message ?? 'Could not update email.'), backgroundColor: Colors.red));
+                }
+              }
+            },
+            child: const Text('Update Email', style: TextStyle(fontWeight: FontWeight.bold)))),
         ])));
   }
 

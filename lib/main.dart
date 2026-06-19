@@ -104,6 +104,8 @@ class FlyConnectApp extends StatelessWidget {
         title: 'FlyConnect',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
         routerConfig: appRouter,
         builder: (context, child) => _VersionGate(child: child),
       ),

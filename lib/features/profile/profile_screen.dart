@@ -523,8 +523,7 @@ class _PostsGrid extends StatelessWidget {
           itemBuilder: (context, i) {
             final post = posts[i];
             return GestureDetector(
-              onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => PostDetailsScreen(post: post))),
+              onTap: () => context.push('/posts/${post.id}'),
               child: post.mediaUrls.isNotEmpty
                 ? Image.network(post.mediaUrls.first, fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(color: AppColors.backgroundGrey))

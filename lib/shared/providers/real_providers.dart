@@ -977,6 +977,12 @@ class ChatProvider extends ChangeNotifier {
 
   List<ChatModel> get chats => _chats;
 
+  /// Total unread messages across all chats for the current user.
+  int get totalUnread {
+    if (_uid == null) return 0;
+    return _chats.fold<int>(0, (sum, c) => sum + (c.unreadCount[_uid] ?? 0));
+  }
+
   /// Non-null when the chat-list stream has reported a failure.
   /// Cleared on a successful snapshot or an explicit retry.
   String? get chatsError => _chatsError;

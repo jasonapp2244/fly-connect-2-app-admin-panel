@@ -16,7 +16,7 @@ class FirebaseConfig {
   /// Android client app ID: `mobilesdk_app_id` in `android/app/google-services.json`
   /// after you register package [androidPackageName] in Firebase Console.
   /// Native Analytics / Crashlytics need this (Web `app_id` causes 404 / missing google_app_id).
-  static const String androidAppId = '';
+  static const String androidAppId = '1:361504801284:android:0ebf704e8b9876fbc0ab51';
 
   /// iOS client app ID: `GOOGLE_APP_ID` in `GoogleService-Info.plist`.
   static const String iosAppId = '';

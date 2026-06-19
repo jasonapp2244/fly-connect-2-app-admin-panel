@@ -18,7 +18,6 @@ dependencies:
 
   # UI & Icons
   cupertino_icons: ^1.0.6
-  flutter_svg: ^2.0.10+1
 
   # Media
   image_picker: ^1.0.7
@@ -49,6 +48,7 @@ dependencies:
   timeago: ^3.6.1
   url_launcher: ^6.2.5
   geolocator: ^14.0.2
+  google_fonts: ^8.1.0
 
 dev_dependencies:
   flutter_test:

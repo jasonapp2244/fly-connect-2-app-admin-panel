@@ -12,6 +12,9 @@ class AdminAnalyticsPage extends StatefulWidget {
 class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
   Map<String, int> _counts = {};
   bool _loading = true;
+  List<int> _dailyUsers = [];
+  List<int> _dailyPosts = [];
+  static const _dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   static const List<String> _collections = [
     'users',
@@ -83,8 +86,39 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
     } catch (e) {
       debugPrint('[AdminAnalytics] fetch failed: $e');
     } finally {
-      if (mounted) setState(() { _counts = counts; _loading = false; });
+      if (mounted) setState(() { _counts = counts; });
     }
+    await _fetchDailyTrends();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _fetchDailyTrends() async {
+    final now = DateTime.now();
+    final weekAgo = now.subtract(const Duration(days: 7));
+    final userCounts = List.filled(7, 0);
+    final postCounts = List.filled(7, 0);
+    try {
+      final usersSnap = await FirebaseFirestore.instance.collection('users')
+          .where('createdAt', isGreaterThan: weekAgo).get();
+      for (final doc in usersSnap.docs) {
+        final ts = doc.data()['createdAt'];
+        if (ts is Timestamp) {
+          final daysAgo = now.difference(ts.toDate()).inDays;
+          if (daysAgo >= 0 && daysAgo < 7) userCounts[6 - daysAgo]++;
+        }
+      }
+      final postsSnap = await FirebaseFirestore.instance.collection('posts')
+          .where('createdAt', isGreaterThan: weekAgo).get();
+      for (final doc in postsSnap.docs) {
+        final ts = doc.data()['createdAt'];
+        if (ts is Timestamp) {
+          final daysAgo = now.difference(ts.toDate()).inDays;
+          if (daysAgo >= 0 && daysAgo < 7) postCounts[6 - daysAgo]++;
+        }
+      }
+    } catch (_) {}
+    _dailyUsers = userCounts;
+    _dailyPosts = postCounts;
   }
 
   @override
@@ -235,6 +269,57 @@ class _AdminAnalyticsPageState extends State<AdminAnalyticsPage> {
               ],
             ),
           ),
+          const SizedBox(height: 24),
+
+          // ── 7-Day Trend Chart ──────────────────────────
+          if (_dailyUsers.isNotEmpty || _dailyPosts.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.dark,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('7-Day Trend', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Row(children: [
+                  Container(width: 12, height: 12, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle)),
+                  const SizedBox(width: 4),
+                  const Text('New Users', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                  const SizedBox(width: 16),
+                  Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.blue.shade300, shape: BoxShape.circle)),
+                  const SizedBox(width: 4),
+                  const Text('New Posts', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                ]),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 120,
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: List.generate(7, (i) {
+                    final maxVal = [..._dailyUsers, ..._dailyPosts].reduce((a, b) => a > b ? a : b).clamp(1, 999999);
+                    return Expanded(child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                        Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Expanded(child: FractionallySizedBox(
+                            heightFactor: _dailyUsers.length > i ? (_dailyUsers[i] / maxVal).clamp(0.02, 1.0) : 0.02,
+                            child: Container(decoration: const BoxDecoration(
+                              color: AppColors.primary, borderRadius: BorderRadius.vertical(top: Radius.circular(3)))))),
+                          const SizedBox(width: 1),
+                          Expanded(child: FractionallySizedBox(
+                            heightFactor: _dailyPosts.length > i ? (_dailyPosts[i] / maxVal).clamp(0.02, 1.0) : 0.02,
+                            child: Container(decoration: BoxDecoration(
+                              color: Colors.blue.shade300, borderRadius: const BorderRadius.vertical(top: Radius.circular(3)))))),
+                        ])),
+                        const SizedBox(height: 4),
+                        Text(_dayLabels[(DateTime.now().subtract(Duration(days: 6 - i)).weekday - 1) % 7],
+                          style: const TextStyle(color: Colors.white54, fontSize: 9)),
+                      ]),
+                    ));
+                  })),
+                ),
+              ]),
+            ),
           const SizedBox(height: 24),
 
           // ── Engagement Metrics Table ──────────────────

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_text_styles.dart';
+import '../providers/notification_provider.dart';
+import '../providers/chat_provider.dart';
 
 // ── Primary Button ──────────────────────────────────────────────────────────
 class PrimaryButton extends StatelessWidget {
@@ -201,6 +204,8 @@ class TopBarActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final notifCount = context.watch<NotificationProvider>().unreadCount;
+    final chatUnread = context.watch<ChatProvider>().totalUnread;
     return Row(
       children: [
         if (showSearch)
@@ -208,8 +213,8 @@ class TopBarActions extends StatelessWidget {
             icon: const Icon(Icons.search, color: AppColors.textPrimary, size: 24),
             onPressed: () => context.push('/search'),
           ),
-        _BadgeIcon(icon: Icons.notifications_outlined, count: 15, onTap: () => GoRouter.of(context).push('/notifications')),
-        if (showChat) _BadgeIcon(icon: Icons.chat_bubble_outline, count: 15, onTap: () => GoRouter.of(context).push('/chat')),
+        _BadgeIcon(icon: Icons.notifications_outlined, count: notifCount, onTap: () => GoRouter.of(context).push('/notifications')),
+        if (showChat) _BadgeIcon(icon: Icons.chat_bubble_outline, count: chatUnread, onTap: () => GoRouter.of(context).push('/chat')),
         const SizedBox(width: 8),
       ],
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_colors.dart';
@@ -12,56 +13,106 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  String _range = '30 days';
+  String _range = '7 days';
+  List<int> _barData = [];
+  List<String> _barLabels = [];
+  bool _loadingChart = true;
+  int _totalPosts = 0;
+  int _totalViews = 0;
 
-  // Bar data per range
-  static const _barData7 = [42, 55, 38, 61, 49, 67, 80];
-  static const _barData30 = [120, 145, 132, 168, 155, 178, 210];
-  static const _barData90 = [320, 410, 380, 450, 420, 510, 590];
-  static const _dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _weekLabels = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7'];
-  static const _monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
+  static const _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  List<String> get _barLabels {
-    switch (_range) {
-      case '7 days': return _dayLabels;
-      case '90 days': return _monthLabels;
-      default: return _weekLabels;
+  @override
+  void initState() {
+    super.initState();
+    _loadChartData();
+  }
+
+  Future<void> _loadChartData() async {
+    setState(() => _loadingChart = true);
+    final uid = context.read<UserProvider>().currentUser?.uid;
+    if (uid == null) { setState(() => _loadingChart = false); return; }
+
+    try {
+      int days;
+      switch (_range) {
+        case '7 days': days = 7; break;
+        case '90 days': days = 90; break;
+        default: days = 30;
+      }
+
+      final cutoff = DateTime.now().subtract(Duration(days: days));
+      final snap = await FirebaseFirestore.instance.collection('posts')
+          .where('authorId', isEqualTo: uid)
+          .where('createdAt', isGreaterThan: cutoff)
+          .orderBy('createdAt')
+          .get();
+
+      _totalPosts = snap.docs.length;
+      _totalViews = snap.docs.fold<int>(0, (sum, d) => sum + ((d.data()['views'] ?? 0) as int));
+
+      if (days == 7) {
+        // Group by day of week
+        final counts = List.filled(7, 0);
+        for (final doc in snap.docs) {
+          final ts = doc.data()['createdAt'];
+          if (ts is Timestamp) {
+            counts[ts.toDate().weekday - 1]++;
+          }
+        }
+        _barData = counts;
+        _barLabels = _dayNames;
+      } else if (days == 30) {
+        // Group by week
+        final counts = List.filled(4, 0);
+        for (final doc in snap.docs) {
+          final ts = doc.data()['createdAt'];
+          if (ts is Timestamp) {
+            final daysAgo = DateTime.now().difference(ts.toDate()).inDays;
+            final weekIdx = (3 - (daysAgo ~/ 7)).clamp(0, 3);
+            counts[weekIdx]++;
+          }
+        }
+        _barData = counts;
+        _barLabels = ['W1', 'W2', 'W3', 'W4'];
+      } else {
+        // Group by month
+        final Map<int, int> monthCounts = {};
+        for (final doc in snap.docs) {
+          final ts = doc.data()['createdAt'];
+          if (ts is Timestamp) {
+            final m = ts.toDate().month;
+            monthCounts[m] = (monthCounts[m] ?? 0) + 1;
+          }
+        }
+        final sortedMonths = monthCounts.keys.toList()..sort();
+        _barData = sortedMonths.map((m) => monthCounts[m]!).toList();
+        _barLabels = sortedMonths.map((m) => _monthNames[m - 1]).toList();
+      }
+      if (_barData.isEmpty) { _barData = [0]; _barLabels = ['—']; }
+    } catch (_) {
+      _barData = [0]; _barLabels = ['—'];
     }
+    if (mounted) setState(() => _loadingChart = false);
   }
 
   List<int> get _yAxisSteps {
-    final maxVal = _currentBars.reduce((a, b) => a > b ? a : b);
+    if (_barData.isEmpty) return [0];
+    final maxVal = _barData.reduce((a, b) => a > b ? a : b);
+    if (maxVal <= 10) return [0, 2, 5, 8, 10];
     if (maxVal <= 100) return [0, 25, 50, 75, 100];
     if (maxVal <= 250) return [0, 50, 100, 150, 200];
     return [0, 150, 300, 450, 600];
   }
 
-  // Metrics per range
-  Map<String, String> get _metrics {
-    switch (_range) {
-      case '7 days': return {'followers': '2,712', 'growth': '+4%', 'reach': '2,840', 'engagement': '1.8%'};
-      case '90 days': return {'followers': '2,840', 'growth': '+38%', 'reach': '24,200', 'engagement': '5.6%'};
-      default: return {'followers': '2,840', 'growth': '+12%', 'reach': '8,420', 'engagement': '4.2%'};
-    }
-  }
-
-  List<int> get _currentBars {
-    switch (_range) {
-      case '7 days': return _barData7;
-      case '90 days': return _barData90;
-      default: return _barData30;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final bars = _currentBars;
-    final maxBar = bars.reduce((a, b) => a > b ? a : b).toDouble();
-    final m = _metrics;
+    final bars = _barData.isEmpty ? [0] : _barData;
+    final maxBar = bars.reduce((a, b) => a > b ? a : b).toDouble().clamp(1.0, double.infinity);
     final promotions = context.watch<PromotionProvider>().promotions;
-    // Use real follower count from provider; keep other metrics as trend indicators
     final realFollowers = context.watch<UserProvider>().currentUser?.followerCount ?? 0;
+    final totalPromoViews = promotions.fold<int>(0, (s, p) => s + p.views);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -85,7 +136,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 DropdownMenuItem(value: '30 days', child: Text('30 days')),
                 DropdownMenuItem(value: '90 days', child: Text('90 days')),
               ],
-              onChanged: (v) => setState(() => _range = v!),
+              onChanged: (v) { setState(() => _range = v!); _loadChartData(); },
             ),
           ),
         ],
@@ -98,27 +149,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           Row(children: [
             Expanded(child: _MetricCard(value: realFollowers.toString(), label: 'Followers')),
             const SizedBox(width: 10),
-            Expanded(child: _MetricCard(value: m['growth']!, label: 'Growth')),
+            Expanded(child: _MetricCard(value: '$_totalPosts', label: 'Posts')),
             const SizedBox(width: 10),
-            Expanded(child: _MetricCard(value: m['reach']!, label: 'Reach')),
+            Expanded(child: _MetricCard(value: '$totalPromoViews', label: 'Promo Views')),
             const SizedBox(width: 10),
-            Expanded(child: _MetricCard(value: m['engagement']!, label: 'Engagement')),
+            Expanded(child: _MetricCard(value: '$_totalViews', label: 'Post Views')),
           ]),
 
           const SizedBox(height: 24),
 
-          Row(children: [
-            const Text('Follower Growth', style: AppTextStyles.labelLarge),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade100, borderRadius: BorderRadius.circular(4)),
-              child: const Text('Demo chart', style: TextStyle(fontSize: 10, color: Colors.orange)),
-            ),
-          ]),
+          const Text('Post Activity', style: AppTextStyles.labelLarge),
           const SizedBox(height: 12),
 
+          if (_loadingChart)
+            const SizedBox(height: 220, child: Center(child: CircularProgressIndicator(color: AppColors.primary)))
+          else
           Container(
             height: 220,
             padding: const EdgeInsets.fromLTRB(8, 12, 12, 8),
